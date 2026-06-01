@@ -1,0 +1,1 @@
+"""SC skill publisher package."""

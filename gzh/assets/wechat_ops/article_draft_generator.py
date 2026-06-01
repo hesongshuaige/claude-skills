@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Generate a review-only WeChat article draft and link it back to Feishu Base."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import subprocess
+import time
+from typing import Any
+
+from topic_collector import first_select
+
+
+ARTICLE_BASE_TOKEN = "DMESblAlEaST94s5lBOcaoBEnyg"
+ARTICLE_TABLE_ID = "tblpqQMN74IPkGOO"
+PENDING_DRAFT_VIEW_ID = "vew2dpAC7B"
+
+READ_FIELDS = [
+    "文章主题",
+    "内容栏目",
+    "服务主线",
+    "目标读者",
+    "核心观点",
+    "资料包摘要",
+    "事实核验状态",
+    "投资部确认",
+    "合规结论",
+    "审稿状态",
+    "标题备选",
+    "文章结构",
+    "表达边界",
+    "策略卡结论",
+    "AI预审结论",
+    "AI预审理由",
+    "可对外表达程度",
+    "内部确认清单",
+    "修改建议",
+    "AI预审状态",
+    "初稿链接",
+    "本文转化目标",
+    "期望动作",
+    "文章结尾承接口径",
+    "发布后跟进建议",
+    "承接动作",
+    "分发对象",
+    "来源材料链接",
+    "审稿意见/复盘结论",
+]
+
+
+def run_lark_json(cmd: list[str]) -> dict[str, Any]:
+    result = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or result.stdout)
+    return json.loads(result.stdout)
+
+
+def xml_text(value: Any) -> str:
+    return html.escape(str(value or ""), quote=False).replace("\n", "<br/>")
+
+
+def split_lines(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    return [line.strip() for line in str(value or "").splitlines() if line.strip()]
+
+
+def first_title(record: dict[str, Any]) -> str:
+    for line in split_lines(record.get("标题备选")):
+        cleaned = line
+        for prefix in ("1. ", "1、", "一、"):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix) :]
+        if cleaned:
+            return cleaned
+    return record.get("文章主题") or "诸葛资本公众号待审初稿"
+
+
+def make_body_paragraphs(record: dict[str, Any]) -> list[str]:
+    theme = record.get("文章主题") or "当前产业选题"
+    service_line = first_select(record.get("服务主线"))
+    ending = record.get("文章结尾承接口径") or ""
+    core = record.get("核心观点") or "这篇文章应围绕公开政策、产业趋势和诸葛资本服务区域产业发展的实际价值展开。"
+    structure_items = split_lines(record.get("文章结构"))
+    package = str(record.get("资料包摘要") or "")
+
+    if "人工智能+制造" in theme:
+        opening = "一项产业政策真正产生价值，不在于文件停留在纸面，而在于能不能变成企业看得见、用得上的场景、资源和协同。"
+    elif "算力" in theme:
+        opening = "算力正在从单一基础设施，变成支撑企业创新、产业协同和区域数字经济发展的重要能力。"
+    elif "低空" in theme:
+        opening = "低空经济的机会不只在飞行器本身，更在通信、场景、监管、载体和产业链协同的系统能力。"
+    else:
+        opening = "产业政策和市场变化真正影响企业成长，关键在于能不能转化为具体场景、资源连接和长期服务能力。"
+
+    if service_line == "领导认可型":
+        role = "对区域国资基金平台而言，公众号文章不能只停留在政策转述，而要说明公司如何围绕区域发展要求，把国资功能、基金工具和产业培育结合起来。"
+        close = "下一步，诸葛资本将继续在合规、审慎、专业的前提下，围绕区域重点产业和上级部署，把内容宣传转化为展示工作、连接资源、服务发展的具体窗口。"
+    elif service_line == "投资机构合作型":
+        role = "对投资机构和专业服务机构而言，真正有价值的合作基础，不只是资金规模，而是区域项目触达、产业场景、政策理解和长期协同能力。"
+        close = "欢迎相关机构在合规边界内围绕产业研究、项目交流、资源协同开展沟通，共同服务更多优质企业在区域产业生态中成长。"
+    else:
+        role = "对项目方而言，真正难的往往不是看见政策，而是把技术、产品、场景、资金、空间和合作伙伴有效连接起来。"
+        close = "欢迎相关项目方和合作机构在合规边界内开展产业交流，共同推动更多优质项目对接真实场景、区域资源和长期资本。"
+
+    paragraphs = [
+        opening,
+        core,
+        role,
+    ]
+    for item in structure_items[:4]:
+        cleaned = item
+        for prefix in ("第一部分：", "第二部分：", "第三部分：", "第四部分：", "第五部分："):
+            cleaned = cleaned.replace(prefix, "")
+        if cleaned:
+            paragraphs.append(cleaned)
+    if "【本地政策/区域连接】" in package:
+        paragraphs.append("结合公开政策和本地产业资源，文章可以进一步说明区域政策、产业载体、场景资源和资本工具之间的关系，但所有具体政策名称、数据和条款都必须在发布前重新核验。")
+    paragraphs.extend(
+        [
+            "对外表达必须保持克制：可以讲政策背景、产业趋势、区域资源和服务能力，不能写成基金产品推介、投资邀约、收益承诺或对具体项目的未授权披露。",
+            ending or close,
+        ]
+    )
+    return paragraphs
+
+
+def get_candidate(record_id: str = "") -> dict[str, Any]:
+    cmd = [
+        "lark-cli",
+        "base",
+        "+record-get" if record_id else "+record-list",
+        "--as",
+        "user",
+        "--base-token",
+        ARTICLE_BASE_TOKEN,
+        "--table-id",
+        ARTICLE_TABLE_ID,
+    ]
+    if record_id:
+        cmd.extend(["--record-id", record_id])
+    else:
+        cmd.extend(["--view-id", PENDING_DRAFT_VIEW_ID, "--limit", "1"])
+    cmd.extend(["--format", "json"])
+    for field in READ_FIELDS:
+        cmd.extend(["--field-id", field])
+    data = run_lark_json(cmd)["data"]
+    if not data.get("record_id_list") or data.get("record_not_found"):
+        raise RuntimeError("没有待生成初稿的文章生产记录")
+    row = dict(zip(data["fields"], data["data"][0]))
+    row["record_id"] = data["record_id_list"][0]
+    return row
+
+
+def quality_guard(record: dict[str, Any]) -> tuple[str, str]:
+    precheck = first_select(record.get("AI预审结论"))
+    investment_confirm = first_select(record.get("投资部确认"))
+    fact_status = first_select(record.get("事实核验状态"))
+    if precheck == "不建议写":
+        return "暂缓", "AI（人工智能）预审为不建议写，不生成初稿。"
+    if precheck == "必须人工确认" or investment_confirm == "待确认":
+        return "已生成待确认", "这是内部讨论版初稿，不可直接发布；投资部确认前，不进入部长审。"
+    if fact_status in {"未核验", "有疑点"}:
+        return "已生成待确认", "事实尚未充分核验，只能作为内部讨论版。"
+    return "已生成可送审", "已生成可送审初稿，但仍必须走合规审查和人工终审。"
+
+
+def build_body(record: dict[str, Any]) -> str:
+    title = first_title(record)
+    service_line = first_select(record.get("服务主线"))
+    readers = "、".join(record.get("目标读者") or [])
+    precheck = first_select(record.get("AI预审结论"))
+    public_level = first_select(record.get("可对外表达程度"))
+    draft_status, draft_note = quality_guard(record)
+    column = first_select(record.get("内容栏目"))
+    confirm_items = split_lines(record.get("内部确认清单"))
+    modify_items = split_lines(record.get("修改建议"))
+    boundary_items = split_lines(record.get("表达边界"))
+    source_link = record.get("来源材料链接") or ""
+
+    paragraphs = make_body_paragraphs(record)
+
+    confirm_rows = "".join(
+        f"<tr><td>{xml_text(item)}</td><td>待确认</td></tr>" for item in confirm_items[:8]
+    )
+    modify_rows = "".join(
+        f"<tr><td>{xml_text(item)}</td><td>初稿修改时执行</td></tr>" for item in modify_items[:6]
+    )
+    boundary_rows = "".join(
+        f"<tr><td>{xml_text(item)}</td></tr>" for item in boundary_items[:8]
+    )
+    title_options = "".join(f"<li>{xml_text(line)}</li>" for line in split_lines(record.get("标题备选"))[:6])
+    body_paragraphs = "\n".join(f"<p>{xml_text(p)}</p>" for p in paragraphs)
+    source_block = f'<p><a type="url-preview" href="{html.escape(source_link, quote=True)}">来源材料链接</a></p>' if source_link else ""
+
+    return f"""<title>{xml_text(title)}（待审初稿）</title>
+<callout emoji="⚠️" background-color="light-yellow" border-color="yellow">
+  <p><b>内部待审稿，不可直接发布。</b>{xml_text(draft_note)}</p>
+  <p>AI（人工智能）预审结论：{xml_text(precheck)}；可对外表达程度：{xml_text(public_level)}。</p>
+</callout>
+<h1>一、稿件定位</h1>
+<table>
+  <thead><tr><th background-color="light-gray">项目</th><th background-color="light-gray">内容</th></tr></thead>
+  <tbody>
+    <tr><td>服务主线</td><td>{xml_text(service_line)}</td></tr>
+    <tr><td>内容栏目</td><td>{xml_text(column)}</td></tr>
+    <tr><td>目标读者</td><td>{xml_text(readers)}</td></tr>
+    <tr><td>当前状态</td><td>{xml_text(draft_status)}</td></tr>
+    <tr><td>本文转化目标</td><td>{xml_text(record.get("本文转化目标"))}</td></tr>
+    <tr><td>期望动作</td><td>{xml_text(record.get("期望动作"))}</td></tr>
+    <tr><td>核心观点</td><td>{xml_text(record.get("核心观点"))}</td></tr>
+  </tbody>
+</table>
+<h1>二、标题备选</h1>
+<ul>{title_options}</ul>
+<hr/>
+<h1>三、公众号正文待审稿</h1>
+<h2>{xml_text(title)}</h2>
+{body_paragraphs}
+<hr/>
+<h1>四、发布前确认清单</h1>
+<table>
+  <thead><tr><th background-color="light-gray">必须确认的问题</th><th background-color="light-gray">状态</th></tr></thead>
+  <tbody>{confirm_rows}</tbody>
+</table>
+<h1>五、修改建议和表达边界</h1>
+<grid>
+  <column width-ratio="0.5">
+    <h2>修改建议</h2>
+    <table><tbody>{modify_rows}</tbody></table>
+  </column>
+  <column width-ratio="0.5">
+    <h2>表达边界</h2>
+    <table><tbody>{boundary_rows}</tbody></table>
+  </column>
+</grid>
+<h1>六、来源材料</h1>
+{source_block}
+<h1>七、发布后跟进建议</h1>
+<p>{xml_text(record.get("发布后跟进建议"))}</p>
+<p>正式发布前，必须重新核验政策原文、发文字号、发布日期和发布机关；涉及中央、省、市、区政策和领导表述，必须按权威原文表达。</p>
+"""
+
+
+def create_doc(content: str) -> str:
+    result = subprocess.run(
+        [
+            "lark-cli",
+            "docs",
+            "+create",
+            "--api-version",
+            "v2",
+            "--as",
+            "user",
+            "--parent-position",
+            "my_library",
+            "--content",
+            "-",
+        ],
+        input=content,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or result.stdout)
+    data = json.loads(result.stdout)
+    return data["data"]["document"]["url"]
+
+
+def write_back(record: dict[str, Any], doc_url: str, draft_status: str, draft_note: str) -> None:
+    review_note = (record.get("审稿意见/复盘结论") or "").rstrip()
+    if review_note:
+        review_note += "\n"
+    review_note += f"已生成公众号待审初稿：{draft_status}。"
+    patch: dict[str, Any] = {
+        "初稿链接": doc_url,
+        "初稿生成状态": draft_status,
+        "初稿生成说明": draft_note,
+        "审稿意见/复盘结论": review_note,
+    }
+    if draft_status == "已生成可送审":
+        patch["审稿状态"] = "部长审"
+    cmd = [
+        "lark-cli",
+        "base",
+        "+record-upsert",
+        "--as",
+        "user",
+        "--base-token",
+        ARTICLE_BASE_TOKEN,
+        "--table-id",
+        ARTICLE_TABLE_ID,
+        "--record-id",
+        record["record_id"],
+        "--json",
+        json.dumps(patch, ensure_ascii=False),
+    ]
+    run_lark_json(cmd)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate a Zhuge Capital WeChat draft document.")
+    parser.add_argument("--write", action="store_true", help="create Feishu doc and write link back to Base")
+    parser.add_argument("--force", action="store_true", help="create another draft even if draft link exists")
+    parser.add_argument("--record-id", default="", help="process a specific article production record")
+    args = parser.parse_args()
+
+    record = get_candidate(args.record_id)
+    if first_select(record.get("AI预审状态")) != "已预审":
+        raise RuntimeError("当前记录还没有完成 AI（人工智能）预审，先运行 strategy_precheck.py")
+    existing_link = record.get("初稿链接") or ""
+    if existing_link and not args.force:
+        print(json.dumps({"ok": True, "skipped": True, "reason": "初稿链接已存在", "url": existing_link}, ensure_ascii=False, indent=2))
+        return 0
+    draft_status, draft_note = quality_guard(record)
+    if draft_status == "暂缓":
+        raise RuntimeError(draft_note)
+    content = build_body(record)
+    if not args.write:
+        print(json.dumps({"ok": True, "dry_run": True, "article": record.get("文章主题"), "初稿生成状态": draft_status, "preview_chars": len(content)}, ensure_ascii=False, indent=2))
+        return 0
+    doc_url = create_doc(content)
+    write_back(record, doc_url, draft_status, draft_note)
+    time.sleep(0.5)
+    print(json.dumps({"ok": True, "record_id": record["record_id"], "article": record.get("文章主题"), "初稿生成状态": draft_status, "url": doc_url}, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

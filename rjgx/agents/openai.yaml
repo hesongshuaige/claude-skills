@@ -1,0 +1,6 @@
+interface:
+  display_name: "RJGX"
+  short_description: "Diagnose SOE workplace relationship cases"
+  default_prompt: "Use $rjgx to diagnose this workplace relationship situation and draft appropriate wording."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Xuexi"
+  short_description: "Create beginner-friendly study cards"
+  default_prompt: "Use $xuexi to digest this article into a beginner-friendly learning card."
+policy:
+  allow_implicit_invocation: true

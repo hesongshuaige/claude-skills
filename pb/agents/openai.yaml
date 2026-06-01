@@ -1,0 +1,6 @@
+interface:
+  display_name: "PB"
+  short_description: "Format official Chinese Word documents"
+  default_prompt: "Use $pb to format this text as a GB/T 9704-2012 compliant official Word document."
+policy:
+  allow_implicit_invocation: true

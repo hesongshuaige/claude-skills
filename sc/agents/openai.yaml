@@ -1,0 +1,6 @@
+interface:
+  display_name: "SC"
+  short_description: "Publish selected skills to a Feishu skill library"
+  default_prompt: "Use $sc to publish a selected local skill into the Feishu AI skill library and verify the page plus attachment."
+policy:
+  allow_implicit_invocation: true

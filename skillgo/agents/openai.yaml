@@ -1,0 +1,6 @@
+interface:
+  display_name: "SkillGo"
+  short_description: "Create, review, test, and publish team skills"
+  default_prompt: "Use $skillgo to turn this workflow into a reviewed, tested, publishable agent skill."
+policy:
+  allow_implicit_invocation: true

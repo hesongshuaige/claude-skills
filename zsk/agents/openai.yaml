@@ -1,0 +1,4 @@
+interface:
+  display_name: "ZSK Knowledge Router"
+  short_description: "Route and use Zhuge Capital Feishu knowledge"
+  default_prompt: "Use $zsk to classify this material, place it in the right Feishu knowledge node, and retrieve the right context for the requested output."

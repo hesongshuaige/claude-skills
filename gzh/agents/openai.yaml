@@ -1,0 +1,6 @@
+interface:
+  display_name: "gzh"
+  short_description: "一键运行公众号运营中台"
+  default_prompt: "Use $gzh to audit or run the Zhuge Capital WeChat operations command center."
+policy:
+  allow_implicit_invocation: true

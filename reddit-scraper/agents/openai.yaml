@@ -1,0 +1,4 @@
+name: reddit-scraper
+display_name: Reddit Scraper
+short_description: Fetch hot posts, search Reddit, get comments — no API key, cookie auth.
+default_prompt: Run scripts/reddit_scraper.py to fetch Reddit data. Three methods: hot_posts(subreddit), search(query), post_comments(permalink). Requires /tmp/reddit_state.json.

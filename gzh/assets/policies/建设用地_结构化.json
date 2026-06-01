@@ -1,0 +1,372 @@
+[
+  {
+    "name": "1号地块",
+    "location": "智远大道与花龙门二街交汇处西北侧",
+    "area_acre": "33.6",
+    "far": "1.5",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "2号地块",
+    "location": "智远大道与花龙门二街交汇处西北侧",
+    "area_acre": "62",
+    "far": "1.5",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "3号地块",
+    "location": "智远大道以西，永康路以北",
+    "area_acre": "74",
+    "far": "1.5",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "4号地块",
+    "location": "智远大道以西，永康路以北",
+    "area_acre": "39",
+    "far": "1.5",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "5号地块",
+    "location": "智远大道以西，永康路以北",
+    "area_acre": "20",
+    "far": "1.7",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "6号地块",
+    "location": "智远大道以西，永康路以北",
+    "area_acre": "44",
+    "far": "1.4",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "7号地块",
+    "location": "智远大道以西，永康路以北，花龙门二街两侧",
+    "area_acre": "4.4",
+    "far": "2.0",
+    "land_type": "商业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "8号地块",
+    "location": "智远大道以西，永康路以北，花龙门二街两侧",
+    "area_acre": "21.4",
+    "far": "1.2",
+    "land_type": "商业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "9号地块",
+    "location": "智远大道以西，永康路以北，花龙门二街两侧",
+    "area_acre": "46.62",
+    "far": "1.2",
+    "land_type": "商业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "10号地块",
+    "location": "智远大道以西，永康路以北，花龙门二街两侧",
+    "area_acre": "31.2",
+    "far": "1.2",
+    "land_type": "商业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "11号地块",
+    "location": "智远大道以西，永康路以北，花龙门二街两侧",
+    "area_acre": "28",
+    "far": "2.0",
+    "land_type": "商业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "12号地块",
+    "location": "三环路以西，武青北路与永康路交汇区",
+    "area_acre": "22.1",
+    "far": "1.5",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "13号地块",
+    "location": "三环路以西，武青北路与永康路交汇区",
+    "area_acre": "34",
+    "far": "1.5",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "14号地块",
+    "location": "三环路以西，武青北路与永康路交汇区",
+    "area_acre": "19.23",
+    "far": "1.5",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "15号地块",
+    "location": "三环路以西，武青北路与永康路交汇区",
+    "area_acre": "61",
+    "far": "1.8",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "16号地块",
+    "location": "三环路以西，武青北路与永康路交汇区",
+    "area_acre": "52.6",
+    "far": "1.8",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "17号地块",
+    "location": "永康路与武青北路交汇处西北侧",
+    "area_acre": "30.9",
+    "far": "3.0-4.0",
+    "land_type": "商业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "18号地块",
+    "location": "武青南路以东，智谷大道以北，京东西南总部西侧",
+    "area_acre": "26.9",
+    "far": "2.0-4.0",
+    "land_type": "工业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "19号地块",
+    "location": "智远大道以西，智谷大道以南",
+    "area_acre": "55.7",
+    "far": "2.0-4.0",
+    "land_type": "工业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "20号地块",
+    "location": "智远大道以西，智谷大道以南",
+    "area_acre": "45.4",
+    "far": "2.0-4.0",
+    "land_type": "工业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "21号地块",
+    "location": "智远大道以西，智谷大道以南",
+    "area_acre": "47.6",
+    "far": "2.0-4.0",
+    "land_type": "工业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "22号地块",
+    "location": "智远大道以西，智谷大道以南",
+    "area_acre": "56.8",
+    "far": "2.0-4.0",
+    "land_type": "工业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "23号地块",
+    "location": "智远大道以西，智谷大道以南",
+    "area_acre": "45.3",
+    "far": "2.0-4.0",
+    "land_type": "工业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "24号地块",
+    "location": "智远大道以西，智谷大道以南",
+    "area_acre": "43.5",
+    "far": "2.0-4.0",
+    "land_type": "工业用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "25号地块",
+    "location": "武侯大道以南，武青南路以西，智远大道以东",
+    "area_acre": "40.82",
+    "far": "3.0-4.0",
+    "land_type": "商业用地",
+    "contact": "傅宇",
+    "contact_phone": "13348826757",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "26号地块",
+    "location": "成都绕城高速以南，成都机场高速以北，文昌路以东",
+    "area_acre": "53.4",
+    "far": "2.0",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "27号地块",
+    "location": "三环路以东，永康路以南",
+    "area_acre": "50.6",
+    "far": "2.0",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "成都音乐文创园"
+  },
+  {
+    "name": "28号地块",
+    "location": "三环路以东，永康路以南",
+    "area_acre": "44",
+    "far": "2.0",
+    "land_type": "住宅用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "成都音乐文创园"
+  },
+  {
+    "name": "29号地块",
+    "location": "潮音路以东，智谷大道以北",
+    "area_acre": "63",
+    "far": "2.0",
+    "land_type": "商兼住用地",
+    "contact": "刘胜铭",
+    "contact_phone": "13668228857",
+    "park": "成都音乐文创园"
+  },
+  {
+    "name": "30号地块",
+    "location": "一环路南三段以南，玉林北路以东，人民南路以西",
+    "area_acre": "25",
+    "far": "4.0",
+    "land_type": "商业用地",
+    "contact": "王开慧",
+    "contact_phone": "18608014130",
+    "park": "华西转化医学产业园"
+  },
+  {
+    "name": "亚西37亩地块",
+    "location": "成双大道以南，鞋都南二路以西",
+    "area_acre": "37",
+    "far": "1.07",
+    "land_type": "生产性用地",
+    "contact": "刘洋",
+    "contact_phone": "18011520630",
+    "park": "华西转化医学产业园"
+  },
+  {
+    "name": "奇琪19.5亩地块",
+    "location": "成双大道以南，鞋都南二路以西",
+    "area_acre": "19.5",
+    "far": "1.26",
+    "land_type": "生产性用地",
+    "contact": "黄唯峰",
+    "contact_phone": "13111863765",
+    "park": "华西转化医学产业园"
+  },
+  {
+    "name": "微波射频科学城3号地块",
+    "location": "智谷大道以北，武青南路以西",
+    "area_acre": "10",
+    "far": "0.61",
+    "land_type": "生产性用地",
+    "contact": "程书豪",
+    "contact_phone": "18628222627",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "微波射频科学城4号地块",
+    "location": "智谷大道以北，武青南路以西",
+    "area_acre": "10",
+    "far": "0.62",
+    "land_type": "生产性用地",
+    "contact": "张光一",
+    "contact_phone": "18228260623",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "微波射频科学城5号地块",
+    "location": "智谷大道以北，武青南路以西",
+    "area_acre": "43.5",
+    "far": "1.0",
+    "land_type": "生产性用地",
+    "contact": "程书豪",
+    "contact_phone": "18628222627",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "微波射频科学城6号地块",
+    "location": "智谷大道以南，武青南路以西，武侯大道以北",
+    "area_acre": "73",
+    "far": "0.42",
+    "land_type": "生产性用地",
+    "contact": "黄建",
+    "contact_phone": "18011301691",
+    "park": "四川成都武侯经济开发区"
+  },
+  {
+    "name": "微波射频科学城7号地块",
+    "location": "智谷大道以南，武青南路以西，武侯大道以北",
+    "area_acre": "12.2",
+    "far": "0.01",
+    "land_type": "生产性用地",
+    "contact": "张光一",
+    "contact_phone": "18228260623",
+    "park": "四川成都武侯经济开发区"
+  }
+]
