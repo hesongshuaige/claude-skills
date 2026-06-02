@@ -1,6 +1,6 @@
 # 🧠 Claude Skills Collection
 
-15 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
+16 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
 
 ## 技能索引
 
