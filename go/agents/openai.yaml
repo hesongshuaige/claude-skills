@@ -1,0 +1,16 @@
+name: touyan-pb
+description: >
+  投资研判一键交付技能：企业材料 → 搜索核验 → 铁律检查 → 研判报告 + 领导简报短信 + 公文docx。
+  使用3个子Agent（搜索/写作/输出）在独立上下文中并行执行。
+  Trigger: 研判/初步研判/看看这家企业/能不能投/分析一下XX公司/研判报告
+version: 2.0.0
+entrypoint: SKILL.md
+language: zh-CN
+dependencies:
+  python:
+    - python-docx>=1.0.0
+interfaces:
+  claude-code:
+    skill_path: go
+  codex:
+    skill_path: go
