@@ -1,6 +1,6 @@
 # 🧠 Claude Skills Collection
 
-17 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
+18 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
 
 ## 技能索引
 
@@ -22,6 +22,7 @@
 | **anysearch** | 搜索增强 | 统一实时搜索引擎，支持网页/垂直领域/批量搜索/URL提取，匿名可用 |
 | **reddit-scraper** | Reddit 爬虫 | 抓取 Reddit 热帖、搜索结果、帖子评论，支持多种排序和子版块 |
 | **aisc** | 知识沉淀 | 把学习内容分析整理后自动上传到飞书知识库，生成索引卡片 |
+| **sx** | 学习内容升级 | 把没讲透的学习文章升级成小白能看懂 + 专业可信 + 能落地的版本（5 段轻量版 / 7 段完整版），含反例库 + 自查清单 |
 | **AIfy** | AI 落地翻译 | 面向企业老板的 AI 落地引导工具：梳理业务路径→筛选 AI 场景→四层拆解→输出落地方案 |
 
 ## 快速安装
@@ -73,6 +74,9 @@ skill-name/
 
 **职场工具：**
 - `rjgx` 人际关系 · `AIfy` AI 落地引导
+
+**内容优化：**
+- `sx` 学习内容升级（小白化 + 专业性 + 能落地，5 段轻量版 / 7 段完整版）
 
 **数据采集：**
 - `reddit-scraper` Reddit 爬虫
