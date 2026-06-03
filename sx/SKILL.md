@@ -1,6 +1,6 @@
 ---
 name: sx
-description: Use when the user shares a tutorial, technical blog, learning article, or documentation and says it's "unclear", "hard to understand", "没讲透", "看不懂", "小白看不懂", or wants to make it more beginner-friendly. Triggers include: 术语没解释、命令不具体、缺例子、看完不知道怎么动手、专业性可疑、缺反例、缺小白化释义、绝对化表达. Applies to technical tutorials, framework docs, AI tool guides, learning notes, course material.
+description: Use when the user shares a tutorial, technical blog, learning article, or documentation and says it's "unclear", "hard to understand", "没讲透", "看不懂", "小白看不懂", or wants to make it more beginner-friendly. Triggers include — 术语没解释、命令不具体、缺例子、看完不知道怎么动手、专业性可疑、缺反例、缺小白化释义、绝对化表达. Applies to technical tutorials, framework docs, AI tool guides, learning notes, course material.
 ---
 
 # Tutorial Clarifier
