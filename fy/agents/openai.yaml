@@ -1,6 +1,0 @@
-interface:
-  display_name: "FY"
-  short_description: "Draft Chinese government/SOE-style speeches with up-management, attitude, EQ, and professional depth"
-  default_prompt: "Use $fy to draft a Chinese government/SOE-style speech that demonstrates up-management (对上管理), attitude (态度担当), emotional intelligence (高情商表态), and professional depth (专业度), with the goal of making the whole room feel convinced and the speaker shine."
-policy:
-  allow_implicit_invocation: true

@@ -16,7 +16,7 @@
 | **gzh** | 公众号运营 | 一键生成/审核/发布公众号文章，含 AI 合规审查和三审流程 |
 | **skillgogo** | 技能评审 | 创建、审查、改进技能的质量评审工具，输出结构化评分和改进建议 |
 | **fyg** | 发言稿写作 | 政府/国企正式发言稿写作引擎：座谈会、招商会见、干部推荐、换届材料，六层质量管控 |
-| **fy** | 发言稿工坊 | 对内对外各种场合发言稿生成器，三角平衡（对上×对下×对外）+ A+C 双风格金句库 + 用户偏好沉淀，可联动 pb 排版 |
+| **hyfy** | 发言稿工坊 | 对内对外各种场合发言稿生成器，三角平衡（对上×对下×对外）+ A+C 双风格金句库 + 用户偏好沉淀，可联动 pb 排版 |
 | **rjgx** | 国企人际关系 | 国企职场人际关系诊断与策略：向上管理、向下管理、跨部门协调、拒绝/婉拒话术 |
 | **go** | 投资研判 | PE投资初筛自动化：6维度搜索核验（含招聘验证）+ 铁律10条 + 研判报告 + 领导短信 + 公文docx |
 | **anysearch** | 搜索增强 | 统一实时搜索引擎，支持网页/垂直领域/批量搜索/URL提取，匿名可用 |
@@ -37,9 +37,17 @@ cp -r claude-skills/pb ~/.claude/skills/
 # 安装单个技能到 Codex
 cp -r claude-skills/pb ~/.codex/skills/
 
+# 推荐：使用各技能自带的 install.sh（自动检测 4 平台）
+cd claude-skills/hyfy && bash install.sh
+cd claude-skills/go && bash install.sh
+
 # 批量安装全部技能
 for skill in claude-skills/*/; do
-  cp -r "$skill" ~/.claude/skills/
+  if [ -f "$skill/install.sh" ]; then
+    bash "$skill/install.sh"
+  else
+    cp -r "$skill" ~/.claude/skills/
+  fi
 done
 ```
 
@@ -60,7 +68,7 @@ skill-name/
 ## 技能分类
 
 **写作与内容：**
-- `pb` 公文排版 · `fy` 发言稿工坊（对内对外+风格化） · `fyg` 发言稿（正式公文+流程化） · `gzh` 公众号
+- `pb` 公文排版 · `hyfy` 发言稿工坊（对内对外+风格化） · `fyg` 发言稿（正式公文+流程化） · `gzh` 公众号
 
 **分析与研判：**
 - `fenxi` 六帽分析 · `go` 投资研判（6维度搜索 + 铁律10条 + DPI量化）

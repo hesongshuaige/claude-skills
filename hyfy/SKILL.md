@@ -1,7 +1,7 @@
 ---
-name: fy
+name: hyfy
 version: 1.0.1
-description: "Use when the user asks for fy or a Chinese government/SOE-style speech (发言稿, 致辞, 讲话稿, 工作表态, 接待致辞, 签约致辞, 揭牌致辞, 汇报发言, 调研发言, 即兴讲话, 领导讲话, 会议发言, 致辞稿, 项目推进表态). Drafts speeches demonstrating up-management (对上管理), attitude (态度担当), EQ (高情商), and professional depth (专业度) across 8 scene types."
+description: "Use when the user asks for hyfy or a Chinese government/SOE-style speech (发言稿, 致辞, 讲话稿, 工作表态, 接待致辞, 签约致辞, 揭牌致辞, 汇报发言, 调研发言, 即兴讲话, 领导讲话, 会议发言, 致辞稿, 项目推进表态). Drafts speeches demonstrating up-management (对上管理), attitude (态度担当), EQ (高情商), and professional depth (专业度) across 8 scene types."
 metadata:
   language: zh-CN
   primary_user: 国企/体制内中高层管理者
@@ -11,11 +11,11 @@ metadata:
   version_history: "v1.0.0 (2026-06-04) 初始版本; v1.0.1 (2026-06-04) 优化 description, 加权限边界, 加用户偏好沉淀"
 ---
 
-# fy — 发言稿工坊
+# hyfy — 会议发言工坊
 
 ## 1. 定位
 
-fy 不是"漂亮话生成器"，是**"对上管理 + 对下担当 + 对外姿态"三角平衡的发言稿思考框架**。
+hyfy 不是"漂亮话生成器"，是**"对上管理 + 对下担当 + 对外姿态"三角平衡的发言稿思考框架**。
 
 每一次发言稿的本质挑战：
 - **对上**：让上级/主宾放心、觉得被尊重、不越位
@@ -28,13 +28,13 @@ fy 不是"漂亮话生成器"，是**"对上管理 + 对下担当 + 对外姿态
 
 ## 2.5 触发词速查
 
-> fy 在以下任一关键词出现时自动触发。description 字段已经覆盖主要触发词，此处为完整清单。
+> hyfy 在以下任一关键词出现时自动触发。description 字段已经覆盖主要触发词，此处为完整清单。
 
-**核心触发**：fy、发言稿、致辞、讲话稿、领导讲话、会议发言、致辞稿
+**核心触发**：hyfy、发言稿、致辞、讲话稿、领导讲话、会议发言、致辞稿
 
 **场景触发**：工作表态、项目推进表态、接待致辞、签约致辞、揭牌致辞、汇报发言、调研发言、即兴讲话
 
-**意图触发**（用户用这些说法时，fy 也应自动响应）：
+**意图触发**（用户用这些说法时，hyfy 也应自动响应）：
 - "帮我写个致辞"
 - "我马上要去发言"
 - "起草一份领导讲话"
@@ -108,7 +108,7 @@ fy 不是"漂亮话生成器"，是**"对上管理 + 对下担当 + 对外姿态
 
 ## 5. 风格选择：A / C（A+C 二选一或混搭）
 
-用户用 fy 时，默认询问风格（除非场景明显指向某一种）：
+用户用 hyfy 时，默认询问风格（除非场景明显指向某一种）：
 
 | 风格 | 配比 | 适用场景 |
 |---|---|---|
@@ -124,7 +124,7 @@ fy 不是"漂亮话生成器"，是**"对上管理 + 对下担当 + 对外姿态
 
 ## 6. 输出契约
 
-fy 输出的发言稿必须包含以下**结构化要素**（可机读、可二次加工）：
+hyfy 输出的发言稿必须包含以下**结构化要素**（可机读、可二次加工）：
 
 ```
 [标题]      —— 公文格式，方正公文小标宋二号居中
@@ -148,7 +148,7 @@ fy 输出的发言稿必须包含以下**结构化要素**（可机读、可二�
 2. **金句必须能被脱离上下文引用**——否则就不是金句，是套话
 3. **政治表述占比不超过 30%**（党建纯场合除外）——超过就是政治站位过头
 4. **副职不能写"几点要求/几点意见"**——这是主宾的语言
-5. **时间节点、金额、产出由用户素材决定**——fy 不自动编造（涉及合规）
+5. **时间节点、金额、产出由用户素材决定**——hyfy 不自动编造（涉及合规）
 6. **必须有对上管理**——即使是副职讲话，也要明确"请 XX 放心"
 7. **必须有全场感染**——至少 1 句金句，否则就是工作汇报不是发言稿
 8. **必须能排版成公文**——结构、缩进、字体必须跟 `pb` 技能兼容
@@ -169,14 +169,14 @@ fy 输出的发言稿必须包含以下**结构化要素**（可机读、可二�
 
 | 上下游 skill | 协同方式 |
 |---|---|
-| **`pb`** | fy 输出内容后，**强烈建议**调用 `pb` 技能排版成公文格式 Word |
-| `article-writing` | 长文/论文场景用 article-writing；会议/致辞/讲话用 fy |
-| `investor-materials` | 投融资 BP 用 investor-materials；非融资型业务会谈用 fy |
+| **`pb`** | hyfy 输出内容后，**强烈建议**调用 `pb` 技能排版成公文格式 Word |
+| `article-writing` | 长文/论文场景用 article-writing；会议/致辞/讲话用 hyfy |
+| `investor-materials` | 投融资 BP 用 investor-materials；非融资型业务会谈用 hyfy |
 
 
 ## 9.5 权限边界
 
-fy **不会**自动执行以下操作（必须由用户明确授权）：
+hyfy **不会**自动执行以下操作（必须由用户明确授权）：
 
 - ❌ 不会自动发布、上传、推送发言稿
 - ❌ 不会自动调用 pb 技能排版（仅"建议"）
@@ -185,7 +185,7 @@ fy **不会**自动执行以下操作（必须由用户明确授权）：
 - ❌ 不会编造政策文件、数据、领导人原话（参见 compliance.md）
 - ❌ 不会替代用户的最终判断——所有稿子必须用户审阅
 
-fy **会**做的事：
+hyfy **会**做的事：
 
 - ✅ 询问 5 个必问信息（场景/角色/听众/素材/风格）
 - ✅ 按 6 步工作流出稿
@@ -195,7 +195,7 @@ fy **会**做的事：
 
 ## 9.6 用户偏好沉淀
 
-fy 启动时会自动加载 `references/user-preferences.md`，应用你历次沉淀的偏好。
+hyfy 启动时会自动加载 `references/user-preferences.md`，应用你历次沉淀的偏好。
 
 **已沉淀的偏好**（v1.0.1 初始）：
 - ❌ 不要"大家上午好"作为固定开场
@@ -204,7 +204,7 @@ fy 启动时会自动加载 `references/user-preferences.md`，应用你历次�
 - ✅ 喜欢"X% 承载 100% 属地责任"小比例大担当句式
 - ✅ 喜欢"合伙人/连接器/合伙人"三角色排比
 
-**新增偏好的方式**：用 fy 写完稿后告诉 fy "以后 X 要/不要 Y"，fy 会自动沉淀到 `user-preferences.md`。
+**新增偏好的方式**：用 hyfy 写完稿后告诉 hyfy "以后 X 要/不要 Y"，hyfy 会自动沉淀到 `user-preferences.md`。
 
 ## 10. 配套 references
 
@@ -214,15 +214,15 @@ fy 启动时会自动加载 `references/user-preferences.md`，应用你历次�
 | `references/golden-lines.md` | A+C 双风格金句库，按场景分类 |
 | `references/structure.md` | 5 段式 / 3 段式 / 即兴式 骨架 |
 | `references/compliance.md` | 国企/私募/政务/党建场景的合规边界（不写什么、要核实什么） |
-| `references/pairing-pb.md` | fy + pb 一体化使用流程 |
+| `references/pairing-pb.md` | hyfy + pb 一体化使用流程 |
 | `examples/joint-venture.md` | 通号合资公司案例（对外商务会谈，5 段式）+ 自检报告 |
 | `examples/mid-year-push.md` | 年中工作推进会案例（对内推进，3 段式）+ 自检报告 |
-| `examples/cheatsheet.md` | 一页纸 cheatsheet：用 fy 之前扫一眼 |
-| `references/user-preferences.md` | **用户偏好沉淀**——你历次调整自动应用，下次用 fy 时直接加载 |
+| `examples/cheatsheet.md` | 一页纸 cheatsheet：用 hyfy 之前扫一眼 |
+| `references/user-preferences.md` | **用户偏好沉淀**——你历次调整自动应用，下次用 hyfy 时直接加载 |
 
 ## 11. 触发后立即执行的 5 问
 
-fy 被触发后，**先问 5 个问题**（除非用户已经给出全部信息）：
+hyfy 被触发后，**先问 5 个问题**（除非用户已经给出全部信息）：
 
 1. **场合**：什么类型的会议？时长要求？是否要讲稿还是要即兴提纲？
 2. **角色**：发言人是几把手？代表单位还是个人？
