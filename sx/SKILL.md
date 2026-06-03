@@ -149,6 +149,7 @@ skill 锁定的是"**结构稳定性**"和"**4 个关键标记**"（故事开场
 **SKILL.md 主体（你正在读的）** — 4 步工作流 + 触发词 + 速查表
 **references/upgrade-template.md** — 02 升级版 7 段结构模板 + 真实示例
 **references/audit-checklist.md** — 小白 5 类 + 专业 5 类问题自查清单
+**references/anti-patterns.md** — 5 条反例库（故事错位/说白不直白/检查清单形式化/软化不足/段落失衡）
 
 ## Common Mistakes
 
