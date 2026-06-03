@@ -1,0 +1,6 @@
+interface:
+  display_name: "SX Learning Upgrade"
+  short_description: "Upgrade tutorials/learning articles so beginners can follow and professionals can trust"
+  default_prompt: "Use $sx to upgrade this technical tutorial so a beginner can understand it, the commands are concrete, and there are check-lists and anti-patterns to back the claims."
+policy:
+  allow_implicit_invocation: true
