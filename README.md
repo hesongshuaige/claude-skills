@@ -21,7 +21,7 @@
 | **go** | 投资研判 | PE投资初筛自动化：6维度搜索核验（含招聘验证）+ 铁律10条 + 研判报告 + 领导短信 + 公文docx |
 | **anysearch** | 搜索增强 | 统一实时搜索引擎，支持网页/垂直领域/批量搜索/URL提取，匿名可用 |
 | **reddit-scraper** | Reddit 爬虫 | 抓取 Reddit 热帖、搜索结果、帖子评论，支持多种排序和子版块 |
-| **aisc** | 知识沉淀 | 把学习内容分析整理后自动上传到飞书知识库，生成索引卡片 |
+| **aisc** | 质量闸门知识沉淀 | 把文章、逐字稿、录音稿、网页和报告生成可验证学习卡片，按入库价值自动分层，并可上传飞书知识库更新索引 |
 | **sx** | 学习内容升级 | 把没讲透的学习文章升级成小白能看懂 + 专业可信 + 能落地的版本（5 段轻量版 / 7 段完整版），含反例库 + 自查清单 |
 | **AIfy** | AI 落地翻译 | 面向企业老板的 AI 落地引导工具：梳理业务路径→筛选 AI 场景→四层拆解→输出落地方案 |
 
@@ -40,6 +40,7 @@ cp -r claude-skills/pb ~/.codex/skills/
 # 推荐：使用各技能自带的 install.sh（自动检测 4 平台）
 cd claude-skills/hyfy && bash install.sh
 cd claude-skills/go && bash install.sh
+cd claude-skills/aisc && bash install.sh
 
 # 批量安装全部技能
 for skill in claude-skills/*/; do
@@ -75,7 +76,7 @@ skill-name/
 
 **搜索工具：**
 - `anysearch` 搜索增强（go 技能推荐安装，匿名模式可用）
-- `xx` 学习挖掘 · `xuexi` 学习卡片 · `zsk` 知识库导航 · `aisc` 知识沉淀
+- `xx` 学习挖掘 · `xuexi` 学习卡片 · `zsk` 知识库导航 · `aisc` 质量闸门知识沉淀
 
 **技能工程：**
 - `sc` 技能上架 · `skillgo` 技能构建 · `skillgogo` 技能评审

@@ -1,30 +1,7 @@
-name: aisc
-description: 把学习内容自动沉淀到飞书知识库，做成可复盘的知识卡片
-version: "1.0"
-author: agent-ecosystem
-trigger:
-  - "learn and save to Feishu"
-  - "沉淀到飞书"
-  - "生成学习卡片并存到飞书"
-  - "学一下存到飞书"
-  - "把文章存到学习卡片沉淀库"
-dependencies:
-  - xuexi
-  - lark-cli
-inputs:
-  - name: article_url
-    type: string
-    required: true
-    description: 文章链接或粘贴的内容
-  - name: card_type
-    type: string
-    required: false
-    default: A
-    description: 学习卡片类型（A/B/C/D）
-outputs:
-  - name: feishu_urls
-    type: object
-    description: 包含知识库、索引、卡片链接
-  - name: card_title
-    type: string
-    description: 生成的卡片标题
+interface:
+  display_name: "AISC Learning Cards"
+  short_description: "Quality-gated knowledge cards with optional Feishu persistence."
+  default_prompt: "Use $aisc to turn this article or transcript into a reusable learning card and save it if it passes the quality gate."
+
+policy:
+  allow_implicit_invocation: true
