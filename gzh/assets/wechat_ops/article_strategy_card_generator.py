@@ -70,22 +70,96 @@ def get_pending_article(record_id: str = "") -> dict[str, Any]:
     return row
 
 
+def _parse_package_fields(record: dict[str, Any]) -> dict[str, Any]:
+    """Parse structured fields from the material package summary."""
+    package = str(record.get("资料包摘要") or "")
+    result: dict[str, Any] = {
+        "core_points": [],
+        "key_data": [],
+        "timelines": [],
+        "framework": [],
+        "keywords": [],
+        "opportunity": "",
+        "raw_text": package,
+    }
+
+    import re
+
+    # Extract sections between 【...】markers
+    def extract_section(marker: str) -> str:
+        pattern = rf"【{marker}】\s*(.+?)(?=\n【|$)"
+        m = re.search(pattern, package, re.DOTALL)
+        return m.group(1).strip() if m else ""
+
+    # Parse core points (bullet list)
+    points_text = extract_section("政策核心要点")
+    if points_text:
+        result["core_points"] = [
+            line.lstrip("- •").strip()
+            for line in points_text.split("\n")
+            if line.strip() and not line.strip().startswith("【")
+        ]
+
+    # Parse key data (semicolon-separated)
+    data_text = extract_section("关键量化指标")
+    if data_text:
+        result["key_data"] = [d.strip() for d in data_text.split("；") if d.strip() and len(d.strip()) > 5]
+
+    # Parse policy framework (→ separated)
+    framework_text = extract_section("政策框架")
+    if framework_text:
+        result["framework"] = [f.strip() for f in framework_text.split("→") if f.strip()]
+
+    # Parse industry keywords (comma-separated)
+    kw_text = extract_section("产业关键词")
+    if kw_text:
+        result["keywords"] = [k.strip() for k in kw_text.split("、") if k.strip()]
+
+    # Parse opportunity section
+    result["opportunity"] = extract_section("诸葛资本机会")
+
+    # Parse timeline
+    timeline_text = extract_section("时间节点")
+    if timeline_text:
+        result["timelines"] = [t.strip() for t in timeline_text.split("；") if t.strip()]
+
+    return result
+
+
 def title_options(record: dict[str, Any]) -> str:
+    """Generate title options dynamically from structured package data."""
+    parsed = _parse_package_fields(record)
     theme = record.get("文章主题") or ""
-    if "人工智能+制造" in theme:
-        return (
-            "1. 从“人工智能+制造”看国资基金如何服务硬科技企业成长\n"
-            "2. 当制造业遇上 AI（人工智能）：项目方需要的不只是技术，还有场景、资本和资源\n"
-            "3. “人工智能+制造”行动来了，国资基金能为硬科技企业做什么\n"
-            "4. 从政策到落地：诸葛资本怎么看“人工智能+制造”的产业机会"
-        )
-    if "算力" in theme:
-        return (
-            "1. 从国家算力互联互通看区域产业升级的新机会\n"
-            "2. 算力不是机房生意，而是产业协同能力\n"
-            "3. 国资基金如何看待算力基础设施的新价值"
-        )
-    return f"1. {theme}\n2. 从政策到产业：诸葛资本的观察\n3. 区域产业机会背后的资本协同逻辑"
+    service_line = first_select(record.get("服务主线"))
+    keywords = parsed["keywords"]
+    data = parsed["key_data"]
+    framework = parsed["framework"]
+
+    titles = [f"1. {theme}"]
+
+    # Generate title based on actual data points
+    if data:
+        # Extract first meaningful number from data
+        import re
+        num_match = re.search(r"(\d+[\.\d]*)\s*(个|家|项|亿|万|条)", data[0])
+        if num_match:
+            num = num_match.group(0)
+            kw = keywords[0] if keywords else "产业"
+            titles.append(f"2. 政策定了{num}的目标，{kw}项目方接下来怎么落地")
+            titles.append(f"3. 从量化指标看{kw}的产业机会与资本协同空间")
+
+    if framework and len(framework) >= 3:
+        titles.append(f"4. {keywords[0] if keywords else '产业'}政策五大方向解读：项目方最该关注什么")
+
+    # Service-line specific title
+    if service_line == "项目方引流型":
+        titles.append(f"5. 不只是政策利好——{keywords[0] if keywords else '产业'}企业真正需要的是场景、资本和资源协同")
+    elif service_line == "领导认可型":
+        titles.append(f"5. 从政策部署到区域实践：国资基金如何服务{keywords[0] if keywords else '产业'}产业培育")
+    else:
+        titles.append(f"5. 政策背后的产业信号与区域合作机会")
+
+    return "\n".join(titles[:6])
 
 
 def inferred_column(service_line: str) -> str:
@@ -129,32 +203,52 @@ def fallback_conversion(column: str, service_line: str) -> tuple[str, str, str, 
 
 
 def structure(record: dict[str, Any]) -> str:
+    """Generate article structure dynamically from policy framework and key data."""
+    parsed = _parse_package_fields(record)
     service_line = first_select(record.get("服务主线"))
     column = first_select(record.get("内容栏目")) or inferred_column(service_line)
+    keywords = parsed["keywords"]
+    data = parsed["key_data"]
+    framework = parsed["framework"]
+    points = parsed["core_points"]
+
+    kw_text = "、".join(keywords[:3]) if keywords else "产业"
+    header = f"栏目定位：{column}。"
+
+    parts = [header]
+
+    # Part 1: Opening - policy background with real data
+    if data:
+        parts.append(f"第一部分：用政策量化目标开场。引用关键数据（如{data[0][:40]}），用一两句话说明政策力度和产业方向，不全文搬运政策文件。")
+    else:
+        parts.append(f"第一部分：点明{kw_text}领域的政策背景和核心趋势，用 1-2 段讲清为什么现在值得关注。")
+
+    # Part 2: Use actual policy framework sections
+    if framework and len(framework) >= 2:
+        fw_1 = framework[1] if len(framework) > 1 else framework[0]
+        parts.append(f"第二部分：围绕政策核心方向「{fw_1}」，提炼与项目方和产业最相关的 2-3 个要点。{('具体包括：' + '；'.join(points[:3])) if points else '从原文中筛选与实际产业落地最相关的内容。'}")
+    else:
+        parts.append(f"第二部分：讲项目方真正关心的问题：{kw_text}落地需要场景、资金、政策和产业链协同，不是单点技术突破。")
+
+    # Part 3: Regional opportunity with local policy connection
+    if parsed["opportunity"]:
+        opp_brief = parsed["opportunity"][:80].replace("\n", "；")
+        parts.append(f"第三部分：转到区域机会。{opp_brief}...结合本地政策和产业资源说明区域承接能力。")
+    else:
+        parts.append(f"第三部分：转到区域机会，结合本地政策、产业载体和区域资源说明为什么区域平台能提供承接场景。")
+
+    # Part 4: Zhuge Capital role
     if service_line == "项目方引流型":
-        return (
-            f"栏目定位：{column}。本文要把政策机会翻译成项目方看得懂的产业落地和资源协同价值。\n"
-            "第一部分：用 1-2 段讲清政策背景，不全文搬运，只抓“人工智能与制造业融合”这个核心趋势。\n"
-            "第二部分：讲项目方真正关心的问题：技术落地需要场景、资金、政策、产业链协同，不是单点技术突破。\n"
-            "第三部分：转到区域机会：结合武侯人工智能、机器人、智能制造、产业载体和政策资源，说明为什么区域平台能提供承接场景。\n"
-            "第四部分：讲诸葛资本角色：不是承诺投资，而是用国资基金工具连接项目、政策、产业资源和合作机构。\n"
-            "第五部分：结尾设置温和合作入口，表达欢迎硬科技、智能制造、AI（人工智能）应用类项目交流，不出现募资或收益表述。"
-        )
-    if service_line == "领导认可型":
-        return (
-            f"栏目定位：{column}。本文要把公司专业能力转化为领导认可和区域品牌表达。\n"
-            "第一部分：接住上级政策要求，点明政策与区域产业发展的关系。\n"
-            "第二部分：讲国资基金平台为什么要服务产业培育。\n"
-            "第三部分：讲诸葛资本可落地的工作抓手。\n"
-            "第四部分：以稳妥表述收束，体现服务大局和专业能力。"
-        )
-    return (
-        f"栏目定位：{column}。本文要释放专业合作姿态，同时守住私募基金公开表达边界。\n"
-        "第一部分：讲行业变化和合作机会。\n"
-        "第二部分：讲诸葛资本的区域资源和协同价值。\n"
-        "第三部分：讲合作边界和合规底线。\n"
-        "第四部分：设置专业、克制的合作入口。"
-    )
+        parts.append(f"第四部分：讲诸葛资本角色：不是承诺投资，而是用国资基金工具连接{kw_text}项目、政策、产业资源和合作机构。用具体的服务能力说明而不是空话。")
+    elif service_line == "领导认可型":
+        parts.append(f"第四部分：以稳妥表述收束，体现服务大局和专业能力，说明诸葛资本如何把政策要求转化为服务区域产业的具体动作。")
+    else:
+        parts.append(f"第四部分：释放专业合作信号，同时守住私募基金公开表达边界，设置克制的合作入口。")
+
+    # Part 5: Call to action
+    parts.append(f"第五部分：结尾设置温和合作入口，表达欢迎{kw_text}相关交流，不出现募资或收益表述。")
+
+    return "\n".join(parts)
 
 
 def expression_boundary(record: dict[str, Any]) -> str:
@@ -164,7 +258,7 @@ def expression_boundary(record: dict[str, Any]) -> str:
         "可以写：政策背景、产业趋势、区域资源、国资基金服务产业的功能、诸葛资本愿意与项目方和机构交流合作。\n"
         "谨慎写：诸葛资本具体投资偏好、具体项目判断、已投项目案例、与合作方的具体关系，必须先确认口径。\n"
         "不能写：公开募集基金、承诺投资、承诺收益、保本兜底、夸大投资能力、披露未公开项目和交易信息。\n"
-        f"当前前置状态：事实核验为“{fact_status}”，投资部确认为“{investment_confirm}”。在投资部未确认前，只能进入策略卡和资料包阶段，不建议直接生成发布稿。"
+        f"当前前置状态：事实核验为「{fact_status}」，投资部确认为「{investment_confirm}」。在投资部未确认前，只能进入策略卡和资料包阶段，不建议直接生成发布稿。"
     )
 
 

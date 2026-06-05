@@ -78,50 +78,155 @@ def first_title(record: dict[str, Any]) -> str:
     return record.get("文章主题") or "诸葛资本公众号待审初稿"
 
 
+def _parse_package(record: dict[str, Any]) -> dict[str, Any]:
+    """Extract structured sections from the material package summary."""
+    import re
+
+    package = str(record.get("资料包摘要") or "")
+    result: dict[str, Any] = {
+        "core_points": [],
+        "key_data": [],
+        "framework": [],
+        "keywords": [],
+        "opportunity_lines": [],
+        "source_ref": "",
+    }
+
+    def extract_section(marker: str) -> str:
+        m = re.search(rf"【{marker}】\s*(.+?)(?=\n【|$)", package, re.DOTALL)
+        return m.group(1).strip() if m else ""
+
+    # Core points
+    points_text = extract_section("政策核心要点")
+    if points_text:
+        result["core_points"] = [
+            line.lstrip("- •").strip()
+            for line in points_text.split("\n")
+            if line.strip() and not line.strip().startswith("【")
+        ]
+
+    # Key data
+    data_text = extract_section("关键量化指标")
+    if data_text:
+        result["key_data"] = [d.strip() for d in data_text.split("；") if d.strip() and len(d.strip()) > 5]
+
+    # Framework
+    fw_text = extract_section("政策框架")
+    if fw_text:
+        result["framework"] = [f.strip() for f in fw_text.split("→") if f.strip()]
+
+    # Keywords
+    kw_text = extract_section("产业关键词")
+    if kw_text:
+        result["keywords"] = [k.strip() for k in kw_text.split("、") if k.strip()]
+
+    # Opportunity
+    opp_text = extract_section("诸葛资本机会")
+    if opp_text:
+        result["opportunity_lines"] = [l.strip() for l in opp_text.split("\n") if l.strip()]
+
+    # Source reference
+    src_text = extract_section("原文参考")
+    if src_text:
+        result["source_ref"] = src_text[:800]
+
+    return result
+
+
 def make_body_paragraphs(record: dict[str, Any]) -> list[str]:
+    """Generate article body paragraphs using structured material package data."""
     theme = record.get("文章主题") or "当前产业选题"
     service_line = first_select(record.get("服务主线"))
     ending = record.get("文章结尾承接口径") or ""
     core = record.get("核心观点") or "这篇文章应围绕公开政策、产业趋势和诸葛资本服务区域产业发展的实际价值展开。"
     structure_items = split_lines(record.get("文章结构"))
-    package = str(record.get("资料包摘要") or "")
 
-    if "人工智能+制造" in theme:
-        opening = "一项产业政策真正产生价值，不在于文件停留在纸面，而在于能不能变成企业看得见、用得上的场景、资源和协同。"
-    elif "算力" in theme:
-        opening = "算力正在从单一基础设施，变成支撑企业创新、产业协同和区域数字经济发展的重要能力。"
-    elif "低空" in theme:
-        opening = "低空经济的机会不只在飞行器本身，更在通信、场景、监管、载体和产业链协同的系统能力。"
+    # Parse the structured package summary
+    parsed = _parse_package(record)
+    data = parsed["key_data"]
+    points = parsed["core_points"]
+    framework = parsed["framework"]
+    keywords = parsed["keywords"]
+    opp_lines = parsed["opportunity_lines"]
+    kw_text = "、".join(keywords[:3]) if keywords else "产业"
+
+    paragraphs: list[str] = []
+
+    # ── Opening: use real data if available ──
+    if data:
+        # Quote the most impressive data point
+        best_data = data[0][:80] if data else ""
+        paragraphs.append(
+            f"一份刚落地的产业政策明确了量化目标——{best_data}。数字背后是{kw_text}领域正在加速的产业升级信号。对{kw_text}企业来说，真正的机会不在于政策文件本身，而在于能不能找到把技术、场景、资本和产业资源连接起来的平台。"
+        )
     else:
-        opening = "产业政策和市场变化真正影响企业成长，关键在于能不能转化为具体场景、资源连接和长期服务能力。"
+        paragraphs.append(
+            f"一项产业政策真正产生价值，不在于文件停留在纸面，而在于能不能变成企业看得见、用得上的场景、资源和协同。{kw_text}领域正在进入政策驱动的产业加速期，关键在于谁能把政策红利转化为具体的企业服务能力。"
+        )
 
+    # ── Core viewpoint ──
+    paragraphs.append(core)
+
+    # ── Role paragraph: based on service line ──
     if service_line == "领导认可型":
-        role = "对区域国资基金平台而言，公众号文章不能只停留在政策转述，而要说明公司如何围绕区域发展要求，把国资功能、基金工具和产业培育结合起来。"
-        close = "下一步，诸葛资本将继续在合规、审慎、专业的前提下，围绕区域重点产业和上级部署，把内容宣传转化为展示工作、连接资源、服务发展的具体窗口。"
+        paragraphs.append(
+            "对区域国资基金平台而言，公众号文章不能只停留在政策转述，而要说明公司如何围绕区域发展要求，把国资功能、基金工具和产业培育结合起来。"
+        )
     elif service_line == "投资机构合作型":
-        role = "对投资机构和专业服务机构而言，真正有价值的合作基础，不只是资金规模，而是区域项目触达、产业场景、政策理解和长期协同能力。"
-        close = "欢迎相关机构在合规边界内围绕产业研究、项目交流、资源协同开展沟通，共同服务更多优质企业在区域产业生态中成长。"
+        paragraphs.append(
+            "对投资机构和专业服务机构而言，真正有价值的合作基础，不只是资金规模，而是区域项目触达、产业场景、政策理解和长期协同能力。"
+        )
     else:
-        role = "对项目方而言，真正难的往往不是看见政策，而是把技术、产品、场景、资金、空间和合作伙伴有效连接起来。"
-        close = "欢迎相关项目方和合作机构在合规边界内开展产业交流，共同推动更多优质项目对接真实场景、区域资源和长期资本。"
+        paragraphs.append(
+            f"对{kw_text}项目方而言，真正难的往往不是看见政策，而是把技术、产品、场景、资金、空间和合作伙伴有效连接起来。"
+        )
 
-    paragraphs = [
-        opening,
-        core,
-        role,
-    ]
-    for item in structure_items[:4]:
-        cleaned = item
-        for prefix in ("第一部分：", "第二部分：", "第三部分：", "第四部分：", "第五部分："):
-            cleaned = cleaned.replace(prefix, "")
-        if cleaned:
-            paragraphs.append(cleaned)
+    # ── Policy substance: use extracted core points ──
+    if points:
+        # Present 2-3 key policy points as substance
+        substance_points = points[:3]
+        substance_text = "；".join(substance_points)
+        paragraphs.append(
+            f"从政策内容看，有几个方向值得{kw_text}企业重点关注：{substance_text}。这些方向背后，是{kw_text}从技术突破走向产业化落地的系统需求。"
+        )
+    elif structure_items:
+        # Fallback to structure items
+        for item in structure_items[:2]:
+            cleaned = item
+            for prefix in ("第一部分：", "第二部分：", "第三部分：", "第四部分：", "第五部分："):
+                cleaned = cleaned.replace(prefix, "")
+            if cleaned:
+                paragraphs.append(cleaned)
+
+    # ── Key data highlight ──
+    if data and len(data) >= 2:
+        data_summary = "；".join(d[:50] for d in data[:4])
+        paragraphs.append(
+            f"政策设定的量化目标值得关注：{data_summary}。这些指标意味着{kw_text}领域在未来几年将出现大量的企业成长和产业整合机会。"
+        )
+
+    # ── Zhuge Capital opportunity: use extracted mapping ──
+    if opp_lines:
+        # Find the most relevant opportunity line
+        for line in opp_lines:
+            if "💡" in line or "对项目方" in line or "领导关注" in line or "机构合作" in line:
+                clean_line = line.lstrip("💡⏰📊📌").strip()
+                if clean_line:
+                    paragraphs.append(clean_line)
+                    break
+
+    # ── Local policy connection ──
+    package = str(record.get("资料包摘要") or "")
     if "【本地政策/区域连接】" in package:
-        paragraphs.append("结合公开政策和本地产业资源，文章可以进一步说明区域政策、产业载体、场景资源和资本工具之间的关系，但所有具体政策名称、数据和条款都必须在发布前重新核验。")
+        paragraphs.append(
+            "结合公开政策和本地产业资源，文章可以进一步说明区域政策、产业载体、场景资源和资本工具之间的关系，但所有具体政策名称、数据和条款都必须在发布前重新核验。"
+        )
+
+    # ── Compliance guard ──
     paragraphs.extend(
         [
             "对外表达必须保持克制：可以讲政策背景、产业趋势、区域资源和服务能力，不能写成基金产品推介、投资邀约、收益承诺或对具体项目的未授权披露。",
-            ending or close,
+            ending or "欢迎相关项目方和合作机构在合规边界内开展产业交流，共同推动更多优质项目对接真实场景、区域资源和长期资本。",
         ]
     )
     return paragraphs

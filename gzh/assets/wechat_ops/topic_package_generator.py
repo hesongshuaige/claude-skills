@@ -80,18 +80,127 @@ def normalize_url(value: str) -> str:
     return match.group(0).rstrip(")") if match else value
 
 
+def _extract_pdf_text(pdf_url: str) -> str:
+    """Download a PDF and extract full text via pdfplumber."""
+    import pdfplumber
+    import io
+
+    r = requests.get(pdf_url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    pages_text: list[str] = []
+    with pdfplumber.open(io.BytesIO(r.content)) as pdf:
+        for page in pdf.pages:
+            t = page.extract_text() or ""
+            if t.strip():
+                pages_text.append(t.strip())
+    return "\n".join(pages_text)
+
+
+def _detect_pdf_in_iframe(soup: BeautifulSoup, base_url: str) -> str | None:
+    """Detect a PDF viewer iframe and return the actual PDF URL."""
+    iframe = soup.find("iframe", src=True)
+    if not iframe:
+        return None
+    src = iframe["src"]
+    if "?file=" in src:
+        from urllib.parse import urljoin
+
+        pdf_path = src.split("?file=", 1)[1]
+        return urljoin(base_url, pdf_path)
+    return None
+
+
+def _extract_html_content(soup: BeautifulSoup, url: str) -> str:
+    """Extract meaningful content from HTML using site-aware selectors."""
+    from urllib.parse import urlparse
+
+    domain = urlparse(url).hostname or ""
+
+    # Remove noise tags
+    for tag in soup(["script", "style", "noscript", "nav", "header", "footer"]):
+        tag.decompose()
+
+    # Site-specific selectors (ordered by priority)
+    container = None
+    if "miit.gov.cn" in domain:
+        # 工信部: 正文在 id="con_con" 或 class="ccontent"
+        container = soup.find("div", id="con_con") or soup.find("div", class_="ccontent")
+    elif "csrc.gov.cn" in domain:
+        # 证监会: 正文在 class="detail-news" 或 class="content"
+        container = soup.find("div", class_="detail-news") or soup.find("div", class_="content")
+    elif "ndrc.gov.cn" in domain:
+        # 发改委: 正文通常在 class="article-content" 或 id="content"
+        container = (
+            soup.find("div", class_="article-content")
+            or soup.find("div", id="content")
+            or soup.find("div", class_="content")
+        )
+
+    # Fallback: find the largest text block
+    if not container:
+        best_len = 0
+        for div in soup.find_all("div"):
+            t = div.get_text(strip=True)
+            if len(t) > best_len:
+                best_len = len(t)
+                container = div
+
+    if not container:
+        return ""
+
+    # Extract paragraphs, keeping shorter sentences that may contain key points
+    parts: list[str] = []
+    for tag in container.find_all(["h1", "h2", "h3", "h4", "p", "li", "tr"]):
+        text = clean_text(tag.get_text(" ", strip=True))
+        if text and len(text) >= 6:
+            parts.append(text)
+
+    return "\n".join(parts)
+
+
+def _request_with_retry(url: str, max_retries: int = 2, timeout: int = 30) -> requests.Response:
+    """HTTP GET with retry for flaky government sites."""
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(url, timeout=timeout, headers=headers)
+            r.raise_for_status()
+            return r
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                import time as _t
+                _t.sleep(2 * (attempt + 1))
+    raise last_exc or RuntimeError("request failed")
+
+
 def fetch_article_text(url: str) -> str:
+    """Fetch source article text with PDF support and site-aware extraction."""
     try:
-        r = requests.get(url, timeout=18, headers={"User-Agent": "Mozilla/5.0 ZhugePackageGenerator/0.1"})
-        r.raise_for_status()
+        r = _request_with_retry(url)
         if not r.encoding or r.encoding.lower() in {"iso-8859-1", "ascii"}:
             r.encoding = r.apparent_encoding or "utf-8"
         soup = BeautifulSoup(r.text, "html.parser")
+
+        # Step 1: Check for PDF in iframe (工信部等政府网站常用)
+        pdf_url = _detect_pdf_in_iframe(soup, url)
+        if pdf_url:
+            pdf_text = _extract_pdf_text(pdf_url)
+            if len(pdf_text) > 500:
+                return pdf_text
+
+        # Step 2: Site-aware HTML content extraction
+        html_text = _extract_html_content(soup, url)
+        if len(html_text) > 200:
+            return html_text
+
+        # Step 3: Fallback to original simple extraction
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
         parts = [clean_text(p.get_text(" ", strip=True)) for p in soup.find_all(["h1", "h2", "p", "li"])]
-        parts = [p for p in parts if len(p) >= 12]
-        return "\n".join(parts[:40])
+        parts = [p for p in parts if len(p) >= 6]
+        return "\n".join(parts[:60])
     except Exception as exc:
         return f"原文抓取失败：{exc}"
 
@@ -256,24 +365,214 @@ def core_viewpoint(topic: dict[str, Any], industries: list[str]) -> str:
     return f"这篇文章需要先判断和诸葛资本目标的真实关系。关联方向：{industry_text}。"
 
 
+def _extract_policy_structure(text: str) -> dict[str, Any]:
+    """Extract structured key points from Chinese government policy text.
+
+    Government policies follow strict formatting: 一、二、三... sections,
+    （一）（二）... sub-sections, numbered targets, and defined timelines.
+    This parser leverages that structure instead of relying on external AI.
+    """
+    import re as _re
+
+    result: dict[str, Any] = {
+        "core_points": [],
+        "key_data": [],
+        "timelines": [],
+        "applicable_entities": [],
+        "industry_keywords": [],
+        "full_structure": [],
+    }
+
+    # 1. Extract top-level sections (一、二、三... or 一、总体要求)
+    section_pattern = _re.compile(r"([一二三四五六七八九十]+、[^\n]{2,40})")
+    sections = section_pattern.findall(text)
+    result["full_structure"] = sections[:10]
+
+    # 2. Extract core points: sentences with key action verbs
+    action_patterns = [
+        r"推进(.{4,30}?)[，。；]",
+        r"支持(.{4,30}?)[，。；]",
+        r"鼓励(.{4,30}?)[，。；]",
+        r"推动(.{4,30}?)[，。；]",
+        r"加快(.{4,30}?)[，。；]",
+        r"培育(.{4,30}?)[，。；]",
+        r"建设(.{4,30}?)[，。；]",
+        r"打造(.{4,30}?)[，。；]",
+        r"突破(.{4,30}?)[，。；]",
+        r"提升(.{4,30}?)[，。；]",
+        r"发展(.{4,30}?)[，。；]",
+    ]
+    seen_points: set[str] = set()
+    for pattern in action_patterns:
+        for match in _re.finditer(pattern, text):
+            point = match.group(0).rstrip("，。；")
+            if point not in seen_points and 10 <= len(point) <= 60:
+                seen_points.add(point)
+                if len(result["core_points"]) < 8:
+                    result["core_points"].append(point)
+
+    # 3. Extract key data: numbers with units, targets, quotas
+    # First rejoin PDF-style line breaks within sentences
+    joined_text = _re.sub(r"(?<![。；！？\n])\n(?![一二三四五六七八九十]+、|\n|[（(])", "", text)
+    data_patterns = [
+        r"(?:到\s*\d{4}\s*年[^。]*?)(?:实现|形成|建成|推出|培育|选树|打造|发展|建设)[^。]{0,40}?\d+[\.\d]*\s*(?:个|家|项|亿|万|条|款|类|种|期|批|台|套|件|名|人|户|次|%%)[^。]{0,40}",
+        r"(?:形成|建成|推出|培育|选树|建设|打造|发展|推动|实现)[^。\n]{0,25}?\d+[\.\d]*\s*(?:个|家|项|亿|万|条|款|类|种|期|批|台|套|件|名|人|户|次)[^。\n]{0,40}",
+    ]
+    seen_data: set[str] = set()
+    for pattern in data_patterns:
+        for match in _re.finditer(pattern, joined_text):
+            sentence = match.group(0).strip()
+            if sentence not in seen_data and 10 <= len(sentence) <= 80:
+                seen_data.add(sentence)
+                if len(result["key_data"]) < 8:
+                    result["key_data"].append(sentence)
+
+    # 4. Extract timelines: deadlines, phases, stages
+    timeline_patterns = [
+        r"到\s*\d{4}\s*年[^。]{5,60}",
+        r"\d{4}\s*年(?:底|初|前|末|前半年|后半年)[^。]{5,60}",
+        r"(?:近期|中期|远期|分阶段|分三步|分两步)[^。]{5,60}",
+    ]
+    seen_time: set[str] = set()
+    for pattern in timeline_patterns:
+        for match in _re.finditer(pattern, text):
+            sentence = match.group(0)
+            if sentence not in seen_data and sentence not in seen_time:
+                seen_time.add(sentence)
+                if len(result["timelines"]) < 5:
+                    result["timelines"].append(sentence)
+
+    # 5. Extract applicable entities: who the policy targets
+    entity_patterns = [
+        r"(?:各?省[^\s，。]{2,20}(?:厅|局|委|部|处|办|中心|署))",
+        r"(?:企业|公司|机构|单位|组织|平台|园区|基地|集群)[^，。]{0,20}",
+    ]
+    seen_entities: set[str] = set()
+    for pattern in entity_patterns:
+        for match in _re.finditer(pattern, text):
+            entity = match.group(0)
+            if entity not in seen_entities and 4 <= len(entity) <= 25:
+                seen_entities.add(entity)
+                if len(result["applicable_entities"]) < 6:
+                    result["applicable_entities"].append(entity)
+
+    # 6. Extract industry/technology keywords
+    tech_keywords = [
+        "人工智能", "大模型", "算力", "智算", "芯片", "数字化", "智能化",
+        "低空经济", "无人驾驶", "工业互联网", "先进制造", "智能制造",
+        "新能源", "新材料", "生物医药", "数字经济", "量子", "区块链",
+        "机器人", "传感器", "边缘计算", "云原生", "数据要素", "数据资产",
+        "5G", "6G", "物联网", "工业软件", "开源",
+    ]
+    result["industry_keywords"] = [kw for kw in tech_keywords if kw in text][:10]
+
+    return result
+
+
+def _extract_zhuge_opportunity(
+    structured: dict[str, Any],
+    industries: list[str],
+    target_line: str,
+) -> str:
+    """Map extracted policy points to Zhuge Capital's service opportunities."""
+    points = structured.get("core_points", [])
+    data = structured.get("key_data", [])
+    keywords = structured.get("industry_keywords", [])
+
+    if not points and not data:
+        return "原文未提取到明确政策要点，建议人工阅读原文后再评估与诸葛资本的关联机会。"
+
+    parts: list[str] = []
+
+    # Map industry keywords to Zhuge Capital's investment focus
+    focus_map = {
+        "人工智能": "AI 投资方向",
+        "大模型": "AI 大模型应用",
+        "算力": "AI 算力中心",
+        "智算": "智算基础设施",
+        "低空经济": "低空经济",
+        "先进制造": "硬科技/先进制造",
+        "智能制造": "硬科技/先进制造",
+        "工业互联网": "电子信息/工业软件",
+        "芯片": "硬科技/芯片",
+        "生物医药": "生物医药",
+        "机器人": "AI/机器人",
+    }
+    matched_focus = set()
+    for kw in keywords:
+        if kw in focus_map:
+            matched_focus.add(focus_map[kw])
+
+    if matched_focus:
+        parts.append(f"📌 诸葛资本投资方向匹配：{'、'.join(matched_focus)}")
+
+    if data:
+        parts.append(f"📊 关键量化目标：{'；'.join(data[:5])}")
+
+    if structured.get("timelines"):
+        parts.append(f"⏰ 时间节点：{'；'.join(structured['timelines'][:3])}")
+
+    # Generate opportunity text based on target line
+    if target_line == "项目方引流型" and points:
+        top_points = "；".join(points[:4])
+        parts.append(f"💡 对项目方的吸引力：政策明确支持 {top_points}，相关企业可借助区域产业生态获得政策、场景、资本协同支持。")
+    elif target_line == "领导认可型" and data:
+        parts.append(f"💡 领导关注点：政策设定了明确的量化目标，可用于体现国资基金对上部署的执行力和产业培育成效。")
+    elif target_line == "投资机构合作型":
+        parts.append(f"💡 机构合作切入点：政策释放的产业机会涉及多个细分领域，适合与投资机构联合研究、项目共研和生态共建。")
+
+    return "\n".join(parts)
+
+
 def package_summary(topic: dict[str, Any], source_text: str, matched_policies: list[str]) -> str:
+    """Build a structured material package with AI-like extraction from raw policy text."""
     title = topic.get("选题标题") or ""
     industries = topic.get("行业方向") or []
     target = first_select(topic.get("目标主线"))
     risk = first_select(topic.get("合规风险"))
-    source_excerpt = clean_text(source_text.replace("\n", " "))[:500]
     policies = "；".join(matched_policies) if matched_policies else "暂未匹配到本地武侯政策条目，正式写稿时建议补充区域政策或公司内部材料。"
-    return (
-        f"【原始选题】{title}\n"
-        f"【服务主线】{target}\n"
-        f"【行业方向】{'、'.join(industries)}\n"
-        f"【原文要点】{source_excerpt}\n"
-        f"【本地政策/区域连接】{policies}\n"
-        f"【诸葛资本角度】{topic.get('诸葛资本钩子') or ''}\n"
-        f"【写作建议】{topic.get('写作切入角度') or ''}\n"
-        f"【写前确认】{topic.get('写前确认事项') or ''}\n"
-        f"【风险提醒】合规风险初判：{risk}。不得写成基金产品推介、公开募资、收益承诺或具体投资承诺；涉及公司真实投资关注边界时，需要投资部确认。"
-    )
+
+    # Extract structured information from the full source text
+    structured = _extract_policy_structure(source_text) if source_text and len(source_text) > 300 else {}
+    zhuge_opportunity = _extract_zhuge_opportunity(structured, industries, target)
+
+    # Build rich summary
+    parts = [
+        f"【原始选题】{title}",
+        f"【服务主线】{target}",
+        f"【行业方向】{'、'.join(industries)}",
+    ]
+
+    # Structured key points (replaces raw text dump)
+    if structured.get("core_points"):
+        points_text = "\n".join(f"  - {p}" for p in structured["core_points"][:6])
+        parts.append(f"【政策核心要点】\n{points_text}")
+    elif source_text:
+        parts.append(f"【原文要点】{clean_text(source_text.replace(chr(10), ' '))[:300]}")
+
+    if structured.get("key_data"):
+        parts.append(f"【关键量化指标】{'；'.join(structured['key_data'][:6])}")
+
+    if structured.get("full_structure"):
+        parts.append(f"【政策框架】{' → '.join(structured['full_structure'][:6])}")
+
+    if structured.get("industry_keywords"):
+        parts.append(f"【产业关键词】{'、'.join(structured['industry_keywords'])}")
+
+    parts.extend([
+        f"【诸葛资本机会】\n{zhuge_opportunity}",
+        f"【本地政策/区域连接】{policies}",
+        f"【诸葛资本角度】{topic.get('诸葛资本钩子') or ''}",
+        f"【写作建议】{topic.get('写作切入角度') or ''}",
+        f"【写前确认】{topic.get('写前确认事项') or ''}",
+        f"【风险提醒】合规风险初判：{risk}。不得写成基金产品推介、公开募资、收益承诺或具体投资承诺；涉及公司真实投资关注边界时，需要投资部确认。",
+    ])
+
+    # Append truncated raw text as reference
+    if source_text and len(source_text) > 500:
+        parts.append(f"【原文参考（前2000字）】\n{source_text[:2000]}")
+
+    return "\n".join(parts)
 
 
 def build_article_record(topic: dict[str, Any]) -> dict[str, Any]:
