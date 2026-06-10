@@ -1,0 +1,6 @@
+interface:
+  display_name: "LDYQ"
+  short_description: "为诸葛资本董事长写、改、审文稿和推进方案，校准对内知己、向上争取、对外公开三类模式"
+  default_prompt: "Use $ldyq to draft, revise, or audit Zhuge Capital chairman-level materials. First identify the mode, role boundary, and data verification status, then produce the document or work plan with next-step advice."
+policy:
+  allow_implicit_invocation: true

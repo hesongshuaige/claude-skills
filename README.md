@@ -1,6 +1,6 @@
 # 🧠 Claude Skills Collection
 
-18 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
+19 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
 
 ## 技能索引
 
@@ -17,6 +17,7 @@
 | **skillgogo** | 技能评审 | 创建、审查、改进技能的质量评审工具，输出结构化评分和改进建议 |
 | **fyg** | 发言稿写作 | 政府/国企正式发言稿写作引擎：座谈会、招商会见、干部推荐、换届材料，六层质量管控 |
 | **hyfy** | 发言稿工坊 | 对内对外各种场合发言稿生成器，三角平衡（对上×对下×对外）+ A+C 双风格金句库 + 用户偏好沉淀，可联动 pb 排版 |
+| **ldyq** | 董事长文稿与推进方案 | 诸葛资本董事长文稿和工作推进适配器：对内知己、向上争取、对外公开三类模式，强化真实底数、堵点打法、需协调事项和数据核对 |
 | **rjgx** | 国企人际关系 | 国企职场人际关系诊断与策略：向上管理、向下管理、跨部门协调、拒绝/婉拒话术 |
 | **go** | 投资研判 | PE投资初筛自动化：6维度搜索核验（含招聘验证）+ 铁律10条 + 研判报告 + 领导短信 + 公文docx |
 | **anysearch** | 搜索增强 | 统一实时搜索引擎，支持网页/垂直领域/批量搜索/URL提取，匿名可用 |
@@ -39,6 +40,7 @@ cp -r claude-skills/pb ~/.codex/skills/
 
 # 推荐：使用各技能自带的 install.sh（自动检测 4 平台）
 cd claude-skills/hyfy && bash install.sh
+cd claude-skills/ldyq && bash install.sh
 cd claude-skills/go && bash install.sh
 cd claude-skills/aisc && bash install.sh
 
@@ -69,7 +71,7 @@ skill-name/
 ## 技能分类
 
 **写作与内容：**
-- `pb` 公文排版 · `hyfy` 发言稿工坊（对内对外+风格化） · `fyg` 发言稿（正式公文+流程化） · `gzh` 公众号
+- `pb` 公文排版 · `hyfy` 发言稿工坊（对内对外+风格化） · `fyg` 发言稿（正式公文+流程化） · `ldyq` 董事长文稿与推进方案 · `gzh` 公众号
 
 **分析与研判：**
 - `fenxi` 六帽分析 · `go` 投资研判（6维度搜索 + 铁律10条 + DPI量化）
