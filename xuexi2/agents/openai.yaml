@@ -1,0 +1,4 @@
+interface:
+  display_name: "学清楚2"
+  short_description: "把文章转成小白能看懂能行动能复用还能自查的学习稿件"
+  default_prompt: "Use $xuexi2 to turn this article into a beginner-friendly learning note with actions and self-checks."
