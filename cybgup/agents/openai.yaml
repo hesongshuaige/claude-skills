@@ -1,0 +1,7 @@
+interface:
+  display_name: "初研报告研判"
+  short_description: "生成国资以投促招投资项目的初步研判报告并完成质量自检"
+  brand_color: "#1E5F8E"
+  default_prompt: "Use $cybg 撰写《XX公司》初步研判报告，按样稿框架与方法论标准输出。"
+policy:
+  allow_implicit_invocation: true

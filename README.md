@@ -1,6 +1,6 @@
 # 🧠 Claude Skills Collection
 
-21 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
+22 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
 
 ## 技能索引
 
@@ -27,6 +27,7 @@
 | **sx** | 学习内容升级 | 把没讲透的学习文章升级成小白能看懂 + 专业可信 + 能落地的版本（5 段轻量版 / 7 段完整版），含反例库 + 自查清单 |
 | **AIfy** | AI 落地翻译 | 面向企业老板的 AI 落地引导工具：梳理业务路径→筛选 AI 场景→四层拆解→输出落地方案 |
 | **skillup** | 提示词入库 | 提示词入库流水线：提取原版→写优化版+设计要点→举一反三6场景(默认新媒体+私募GP/LP，可替换)→MiniMax-M3/image-01实测验证→lark-cli上传飞书+更新索引；不绑定特定飞书库，零硬编码 |
+| **cybgup** | 以投促招研判 | 国资以投促招项目初步研判报告：20维度研判+三层验证引擎(查证→推断→盲区)+浏览器优先搜索+可比公司估值+DCF情景分析+国标公文Word |
 
 ## 快速安装
 
@@ -45,6 +46,7 @@ cd claude-skills/hyfy && bash install.sh
 cd claude-skills/ldyq && bash install.sh
 cd claude-skills/go && bash install.sh
 cd claude-skills/aisc && bash install.sh
+cd claude-skills/cybgup && bash install.sh
 
 # 批量安装全部技能
 for skill in claude-skills/*/; do
@@ -76,7 +78,7 @@ skill-name/
 - `pb` 公文排版 · `hyfy` 发言稿工坊（对内对外+风格化） · `fyg` 发言稿（正式公文+流程化） · `ldyq` 董事长文稿与推进方案 · `gzh` 公众号
 
 **分析与研判：**
-- `fenxi` 六帽分析 · `go` 投资研判（6维度搜索 + 铁律10条 + DPI量化）
+- `fenxi` 六帽分析 · `go` 投资研判（6维度搜索 + 铁律10条 + DPI量化） · `cybgup` 以投促招研判（20维度 + 三层验证引擎 + 浏览器优先搜索 + DCF估值）
 
 **搜索工具：**
 - `anysearch` 搜索增强（go 技能推荐安装，匿名模式可用）
