@@ -1,6 +1,13 @@
 # CHANGELOG
 
-## v3（2026-07-22，最新）— 身份 + 方法论 + 硬伤单一来源
+## v3.1（2026-07-28，最新）— superpowers 复审 + Codex 部署实测 + 文档同步
+
+v3 方法论不动（已扎实），只做发布质量收尾：
+- **superpowers writing-skills 复审**：确认 SKILL.md / REFERENCE.md 已符合规范（身份节 + §零落地 5 条方法论 + 主文件/heavy-reference 拆分），方法论正文无需改动
+- **Codex 部署实测通过**：install.sh `--codex` / `--agents` 实测，skillup 正确装入 `~/.codex/skills/skillup` 和 `~/.agents/skills/skillup`（三件套齐全、与源一致、无误带 .git/archive、frontmatter 合法可被 codex 识别）
+- **根 README 描述修正**：skillup 行从滞后的"举一反三6场景(默认新媒体+私募)"更新为 v3 实际"4池选6条 + 身份节 + A/B判型 + 致命硬伤收敛"
+
+## v3（2026-07-22）— 身份 + 方法论 + 硬伤单一来源
 
 在 v2 基础上：
 - **加身份节**：AI 提示词工程化设计师 + 业务效果验证师，6 子能力（场景拆解 / 风险预判 / 流程结构化 / 业务贴合 / 事实边界 / 评测驱动）
