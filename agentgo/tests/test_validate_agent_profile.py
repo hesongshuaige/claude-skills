@@ -229,6 +229,20 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertIn("WARN", output.upper())
         self.assertNotIn("PROVIDER_UNKNOWN", output)
 
+    def test_unknown_non_custom_provider_fails(self) -> None:
+        config_path = self.profile / "config.yaml"
+        content = config_path.read_text(encoding="utf-8")
+        config_path.write_text(
+            content.replace("custom:minimax", "definitely-not-a-provider"),
+            encoding="utf-8",
+        )
+
+        result = run_validator(self.profile)
+        output = self._output(result)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("PROVIDER_UNKNOWN", output)
+
     def test_missing_workspace_fails(self) -> None:
         for path in self.workspace.iterdir():
             path.unlink()
@@ -253,6 +267,23 @@ class ValidateAgentProfileTests(unittest.TestCase):
                 self.assertEqual(0, result.returncode, output)
                 self.assertIn("WARN", output.upper())
                 self.assertIn("static", output.lower())
+        config_path.write_text(original, encoding="utf-8")
+
+    def test_uppercase_cwd_placeholders_are_invalid_relative_paths(self) -> None:
+        config_path = self.profile / "config.yaml"
+        original = config_path.read_text(encoding="utf-8")
+        for invalid_placeholder in ("AUTO", "CWD"):
+            with self.subTest(invalid_placeholder=invalid_placeholder):
+                config_path.write_text(
+                    original.replace(
+                        self.workspace.as_posix(), invalid_placeholder
+                    ),
+                    encoding="utf-8",
+                )
+                result = run_validator(self.profile)
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("WORKSPACE_RELATIVE", output)
         config_path.write_text(original, encoding="utf-8")
 
     def test_ordinary_relative_cwd_fails_instead_of_using_profile(self) -> None:

@@ -38,6 +38,18 @@ _FEISHU_ENUMS = {
     "FEISHU_GROUP_POLICY": {"open", "allowlist", "disabled"},
     "FEISHU_REQUIRE_MENTION": {"true", "false"},
 }
+# Source: installed Hermes ``hermes-agent/cli.py`` AIAgent provider docs,
+# checked 2026-08-04. Keep this deliberately small and explicit.
+_BUILTIN_MODEL_PROVIDERS = {
+    "auto",
+    "openrouter",
+    "nous",
+    "openai-codex",
+    "zai",
+    "kimi-coding",
+    "minimax",
+    "minimax-cn",
+}
 
 
 def _strip_yaml_comment(value: str) -> str:
@@ -329,12 +341,20 @@ def validate_profile(profile: Path | str) -> list[Finding]:
                     )
                 elif providers and provider_reference in providers:
                     check_provider(provider_reference, providers[provider_reference])
-                else:
+                elif provider_reference in _BUILTIN_MODEL_PROVIDERS:
                     findings.append(
                         Finding(
                             "WARN",
                             "PROVIDER_UNVERIFIED",
                             f"Built-in provider {provider_reference} has no local credential mapping; verify it with a direct model test",
+                        )
+                    )
+                else:
+                    findings.append(
+                        Finding(
+                            "ERROR",
+                            "PROVIDER_UNKNOWN",
+                            f"Provider is not recognized: {provider_reference}",
                         )
                     )
 
@@ -350,7 +370,7 @@ def validate_profile(profile: Path | str) -> list[Finding]:
                 or cwd_value.startswith("\\\\")
             )
             is_posix_absolute = cwd_value.startswith("/")
-            if cwd_value.lower() in {"auto", "cwd"} or cwd_value == ".":
+            if cwd_value in {"auto", "cwd", "."}:
                 findings.append(
                     Finding(
                         "WARN",
