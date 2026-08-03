@@ -8,7 +8,7 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PACKAGE_ROOT / "scripts" / "validate_agent_profile.py"
-CONTEXT_FILES = ("SOUL.md", "AGENTS.md", "README.md", "PROJECT.md")
+WORKSPACE_CONTEXT_FILES = ("AGENTS.md", "README.md", "PROJECT.md")
 REQUIRED_FEISHU_ENV = {
     "FEISHU_APP_ID": "cli_test_placeholder",
     "FEISHU_APP_SECRET": "test-only-feishu-secret",
@@ -80,7 +80,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
             encoding="utf-8",
         )
         (self.profile / "SOUL.md").write_text("# Test Agent\n", encoding="utf-8")
-        for filename in CONTEXT_FILES:
+        for filename in WORKSPACE_CONTEXT_FILES:
             (self.workspace / filename).write_text(
                 f"# {filename}\nTest context.\n", encoding="utf-8"
             )
@@ -159,7 +159,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertIn("workspace", self._output(result).lower())
 
     def test_each_missing_context_file_fails(self) -> None:
-        for filename in CONTEXT_FILES:
+        for filename in WORKSPACE_CONTEXT_FILES:
             with self.subTest(filename=filename):
                 path = self.workspace / filename
                 original = path.read_text(encoding="utf-8")
@@ -172,6 +172,14 @@ class ValidateAgentProfileTests(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(filename, self._output(result))
 
+    def test_missing_root_soul_file_fails(self) -> None:
+        (self.profile / "SOUL.md").unlink()
+
+        result = run_validator(self.profile)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("SOUL.md", self._output(result))
+
     def test_context_files_in_wrong_locations_fail(self) -> None:
         cases = (
             (self.profile / "SOUL.md", self.workspace / "SOUL.md"),
@@ -179,17 +187,12 @@ class ValidateAgentProfileTests(unittest.TestCase):
         )
         for expected_path, wrong_path in cases:
             with self.subTest(filename=expected_path.name):
-                original = expected_path.read_text(encoding="utf-8")
-                expected_path.unlink()
-                created_wrong_path = not wrong_path.exists()
-                if created_wrong_path:
-                    wrong_path.write_text(original, encoding="utf-8")
+                self.assertFalse(wrong_path.exists(), f"fixture collision: {wrong_path}")
+                expected_path.replace(wrong_path)
                 try:
                     result = run_validator(self.profile)
                 finally:
-                    expected_path.write_text(original, encoding="utf-8")
-                    if created_wrong_path:
-                        wrong_path.unlink()
+                    wrong_path.replace(expected_path)
 
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(expected_path.name, self._output(result))
