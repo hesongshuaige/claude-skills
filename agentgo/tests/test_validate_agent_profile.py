@@ -9,6 +9,15 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PACKAGE_ROOT / "scripts" / "validate_agent_profile.py"
 CONTEXT_FILES = ("SOUL.md", "AGENTS.md", "README.md", "PROJECT.md")
+REQUIRED_FEISHU_ENV = {
+    "FEISHU_APP_ID": "cli_test_placeholder",
+    "FEISHU_APP_SECRET": "test-only-feishu-secret",
+    "FEISHU_DOMAIN": "feishu",
+    "FEISHU_CONNECTION_MODE": "websocket",
+    "FEISHU_ALLOWED_USERS": "ou_test_placeholder",
+    "FEISHU_GROUP_POLICY": "allowlist",
+    "FEISHU_REQUIRE_MENTION": "true",
+}
 
 
 def run_validator(profile: Path) -> subprocess.CompletedProcess[str]:
@@ -64,17 +73,9 @@ class ValidateAgentProfileTests(unittest.TestCase):
         )
         (self.profile / ".env").write_text(
             "\n".join(
-                (
-                    "MINIMAX_M3_API_KEY=test-only-model-secret",
-                    "FEISHU_APP_ID=cli_test_placeholder",
-                    "FEISHU_APP_SECRET=test-only-feishu-secret",
-                    "FEISHU_DOMAIN=feishu",
-                    "FEISHU_CONNECTION_MODE=websocket",
-                    "FEISHU_ALLOWED_USERS=ou_test_placeholder",
-                    "FEISHU_GROUP_POLICY=allowlist",
-                    "FEISHU_REQUIRE_MENTION=true",
-                    "",
-                )
+                ["MINIMAX_M3_API_KEY=test-only-model-secret"]
+                + [f"{name}={value}" for name, value in REQUIRED_FEISHU_ENV.items()]
+                + [""]
             ),
             encoding="utf-8",
         )
@@ -217,6 +218,28 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("FEISHU_GROUP_POLICY", output)
         self.assertIn("everyone", output)
+
+    def test_each_required_feishu_variable_must_be_present(self) -> None:
+        env_path = self.profile / ".env"
+        original = env_path.read_text(encoding="utf-8")
+        for name in REQUIRED_FEISHU_ENV:
+            with self.subTest(name=name):
+                env_path.write_text(
+                    "\n".join(
+                        line
+                        for line in original.splitlines()
+                        if not line.startswith(f"{name}=")
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                try:
+                    result = run_validator(self.profile)
+                finally:
+                    env_path.write_text(original, encoding="utf-8")
+
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(name, self._output(result))
 
     def test_invalid_feishu_settings_fail(self) -> None:
         invalid_settings = {
