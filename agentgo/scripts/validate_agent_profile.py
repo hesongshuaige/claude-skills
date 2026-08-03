@@ -90,46 +90,81 @@ def _parse_scalar(value: str) -> Any:
 
 
 def parse_simple_yaml(path: Path | str) -> dict:
-    """Parse the mapping-only YAML subset used by Hermes configuration."""
+    """Parse the mappings, scalars, and string lists used by Hermes config."""
     source = Path(path).read_text(encoding="utf-8-sig")
-    root: dict[str, Any] = {}
-    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
-
+    tokens: list[tuple[int, str, int]] = []
     for line_number, raw_line in enumerate(source.splitlines(), 1):
         if not raw_line.strip() or raw_line.lstrip().startswith("#"):
             continue
         if "\t" in raw_line[: len(raw_line) - len(raw_line.lstrip())]:
             raise ValueError(f"line {line_number}: tabs are not valid indentation")
         indent = len(raw_line) - len(raw_line.lstrip(" "))
-        content = raw_line[indent:]
-        if content.startswith("-"):
-            raise ValueError(f"line {line_number}: lists are not supported")
-        if ":" not in content:
-            raise ValueError(f"line {line_number}: expected key: value")
-        key, raw_value = content.split(":", 1)
-        key = key.strip()
-        if not _YAML_KEY.fullmatch(key):
-            raise ValueError(f"line {line_number}: invalid mapping key")
+        tokens.append((indent, raw_line[indent:], line_number))
 
-        while stack and indent <= stack[-1][0]:
-            stack.pop()
-        if not stack:
-            raise ValueError(f"line {line_number}: invalid indentation")
-        if indent > 0 and stack[-1][0] < 0:
-            raise ValueError(f"line {line_number}: unexpected indentation")
-        parent = stack[-1][1]
-        if key in parent:
-            raise ValueError(f"line {line_number}: duplicate key {key}")
+    if not tokens:
+        return {}
+    if tokens[0][0] != 0:
+        raise ValueError(f"line {tokens[0][2]}: unexpected indentation")
 
-        cleaned = _strip_yaml_comment(raw_value).strip()
-        if cleaned:
-            parent[key] = _parse_scalar(cleaned)
-        else:
-            child: dict[str, Any] = {}
-            parent[key] = child
-            stack.append((indent, child))
+    def parse_block(index: int, block_indent: int) -> tuple[Any, int]:
+        first_content = tokens[index][1]
+        is_list = first_content == "-" or first_content.startswith("- ")
+        container: Any = [] if is_list else {}
 
-    return root
+        while index < len(tokens):
+            indent, content, line_number = tokens[index]
+            if indent < block_indent:
+                break
+            if indent > block_indent:
+                raise ValueError(f"line {line_number}: unexpected indentation")
+
+            item_is_list = content == "-" or content.startswith("- ")
+            if item_is_list != is_list:
+                raise ValueError(f"line {line_number}: cannot mix lists and mappings")
+
+            if is_list:
+                raw_item = content[1:].strip()
+                if not raw_item:
+                    raise ValueError(f"line {line_number}: list item must be a scalar")
+                container.append(_parse_scalar(raw_item))
+                index += 1
+                if index < len(tokens) and tokens[index][0] > block_indent:
+                    raise ValueError(
+                        f"line {tokens[index][2]}: scalar list item cannot have children"
+                    )
+                continue
+
+            if ":" not in content:
+                raise ValueError(f"line {line_number}: expected key: value")
+            key, raw_value = content.split(":", 1)
+            key = key.strip()
+            if not _YAML_KEY.fullmatch(key):
+                raise ValueError(f"line {line_number}: invalid mapping key")
+            if key in container:
+                raise ValueError(f"line {line_number}: duplicate key {key}")
+
+            cleaned = _strip_yaml_comment(raw_value).strip()
+            index += 1
+            if cleaned:
+                container[key] = _parse_scalar(cleaned)
+                if index < len(tokens) and tokens[index][0] > block_indent:
+                    raise ValueError(
+                        f"line {tokens[index][2]}: scalar value cannot have children"
+                    )
+            elif index < len(tokens) and tokens[index][0] > block_indent:
+                child_indent = tokens[index][0]
+                container[key], index = parse_block(index, child_indent)
+            else:
+                container[key] = {}
+
+        return container, index
+
+    parsed, final_index = parse_block(0, 0)
+    if final_index != len(tokens):
+        raise ValueError(f"line {tokens[final_index][2]}: invalid structure")
+    if not isinstance(parsed, dict):
+        raise ValueError("top-level YAML value must be a mapping")
+    return parsed
 
 
 def _parse_env(path: Path | str) -> dict[str, str]:
@@ -224,7 +259,7 @@ def validate_profile(profile: Path | str) -> list[Finding]:
         if name in env_values:
             value = env_values[name]
             if value not in allowed:
-                findings.append(Finding("ERROR", "ENV_INVALID", f"Invalid {name} value: {value}"))
+                findings.append(Finding("ERROR", "ENV_INVALID", f"Invalid value for {name}"))
 
     if config is not None:
         model = _get_mapping(config, "model")

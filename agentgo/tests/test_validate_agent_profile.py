@@ -94,6 +94,23 @@ class ValidateAgentProfileTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, self._output(result))
 
+    def test_complete_profile_with_block_lists_passes(self) -> None:
+        config_path = self.profile / "config.yaml"
+        content = config_path.read_text(encoding="utf-8")
+        config_path.write_text(
+            content
+            + "toolsets:\n"
+            + "  - terminal\n"
+            + "approvals:\n"
+            + "  deny:\n"
+            + "    - '*rm -rf*'\n",
+            encoding="utf-8",
+        )
+
+        result = run_validator(self.profile)
+
+        self.assertEqual(0, result.returncode, self._output(result))
+
     def test_missing_required_file_fails(self) -> None:
         (self.profile / "config.yaml").unlink()
 
@@ -220,7 +237,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("FEISHU_GROUP_POLICY", output)
-        self.assertIn("everyone", output)
+        self.assertNotIn("everyone", output)
 
     def test_each_required_feishu_variable_must_be_present(self) -> None:
         env_path = self.profile / ".env"
@@ -263,7 +280,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
 
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(name, output)
-                self.assertIn(invalid, output)
+                self.assertNotIn(invalid, output)
         env_path.write_text(original, encoding="utf-8")
 
     @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforced on Windows")
