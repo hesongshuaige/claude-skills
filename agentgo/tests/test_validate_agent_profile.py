@@ -165,6 +165,70 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertIn("MINIMAX_M3_API_KEY", output)
         self.assertNotIn(secret, output)
 
+    def test_required_secret_and_identity_values_must_not_be_blank(self) -> None:
+        env_path = self.profile / ".env"
+        original = env_path.read_text(encoding="utf-8")
+        names = (
+            "MINIMAX_M3_API_KEY",
+            "FEISHU_APP_ID",
+            "FEISHU_APP_SECRET",
+            "FEISHU_ALLOWED_USERS",
+        )
+        for name in names:
+            for blank in ("", "   "):
+                with self.subTest(name=name, blank=repr(blank)):
+                    lines = []
+                    for line in original.splitlines():
+                        if line.startswith(f"{name}="):
+                            lines.append(f"{name}={blank}")
+                        else:
+                            lines.append(line)
+                    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    result = run_validator(self.profile)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn(name, self._output(result))
+        env_path.write_text(original, encoding="utf-8")
+
+    def test_dotenv_export_quotes_comments_and_hashes_are_supported(self) -> None:
+        secret_values = (
+            "model#secret",
+            "cli#app-id",
+            "app#secret",
+            "ou#allowed-user",
+        )
+        (self.profile / ".env").write_text(
+            "export MINIMAX_M3_API_KEY=\"model#secret\" # model comment\n"
+            "FEISHU_APP_ID='cli#app-id' # id comment\n"
+            "export FEISHU_APP_SECRET=\"app#secret\" # secret comment\n"
+            "FEISHU_DOMAIN='feishu' # domain comment\n"
+            "FEISHU_CONNECTION_MODE=\"websocket\" # mode comment\n"
+            "export FEISHU_ALLOWED_USERS='ou#allowed-user' # user comment\n"
+            "FEISHU_GROUP_POLICY=allowlist # policy comment\n"
+            "FEISHU_REQUIRE_MENTION=true # mention comment\n",
+            encoding="utf-8",
+        )
+
+        result = run_validator(self.profile)
+        output = self._output(result)
+
+        self.assertEqual(0, result.returncode, output)
+        for secret in secret_values:
+            self.assertNotIn(secret, output)
+
+    def test_builtin_provider_without_provider_mapping_does_not_fail(self) -> None:
+        config_path = self.profile / "config.yaml"
+        content = config_path.read_text(encoding="utf-8")
+        config_path.write_text(
+            content.replace("custom:minimax", "openrouter"), encoding="utf-8"
+        )
+
+        result = run_validator(self.profile)
+        output = self._output(result)
+
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("WARN", output.upper())
+        self.assertNotIn("PROVIDER_UNKNOWN", output)
+
     def test_missing_workspace_fails(self) -> None:
         for path in self.workspace.iterdir():
             path.unlink()
@@ -174,6 +238,57 @@ class ValidateAgentProfileTests(unittest.TestCase):
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("workspace", self._output(result).lower())
+
+    def test_runtime_cwd_placeholders_warn_without_failing(self) -> None:
+        config_path = self.profile / "config.yaml"
+        original = config_path.read_text(encoding="utf-8")
+        for placeholder in ("auto", "cwd", "."):
+            with self.subTest(placeholder=placeholder):
+                config_path.write_text(
+                    original.replace(self.workspace.as_posix(), placeholder),
+                    encoding="utf-8",
+                )
+                result = run_validator(self.profile)
+                output = self._output(result)
+                self.assertEqual(0, result.returncode, output)
+                self.assertIn("WARN", output.upper())
+                self.assertIn("static", output.lower())
+        config_path.write_text(original, encoding="utf-8")
+
+    def test_ordinary_relative_cwd_fails_instead_of_using_profile(self) -> None:
+        config_path = self.profile / "config.yaml"
+        content = config_path.read_text(encoding="utf-8")
+        config_path.write_text(
+            content.replace(self.workspace.as_posix(), "workspace"), encoding="utf-8"
+        )
+
+        result = run_validator(self.profile)
+        output = self._output(result)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("relative", output.lower())
+
+    def test_windows_and_posix_absolute_cwd_formats_are_recognized(self) -> None:
+        config_path = self.profile / "config.yaml"
+        original = config_path.read_text(encoding="utf-8")
+        formats = (
+            (r"Z:\definitely-missing-agentgo-workspace", os.name == "nt"),
+            ("/definitely-missing-agentgo-workspace", os.name != "nt"),
+        )
+        for cwd, native_format in formats:
+            with self.subTest(cwd=cwd):
+                config_path.write_text(
+                    original.replace(self.workspace.as_posix(), cwd), encoding="utf-8"
+                )
+                result = run_validator(self.profile)
+                output = self._output(result)
+                if native_format:
+                    self.assertNotEqual(0, result.returncode)
+                else:
+                    self.assertEqual(0, result.returncode, output)
+                    self.assertIn("WARN", output.upper())
+                self.assertNotIn("relative", output.lower())
+        config_path.write_text(original, encoding="utf-8")
 
     def test_each_missing_context_file_fails(self) -> None:
         for filename in WORKSPACE_CONTEXT_FILES:

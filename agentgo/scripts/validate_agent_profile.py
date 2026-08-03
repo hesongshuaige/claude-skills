@@ -167,7 +167,43 @@ def parse_simple_yaml(path: Path | str) -> dict:
     return parsed
 
 
-def _parse_env(path: Path | str) -> dict[str, str]:
+def _normalize_env_value(raw_value: str) -> str:
+    value = raw_value.strip()
+    if not value:
+        return ""
+    if value[0] in "'\"":
+        quote = value[0]
+        escaped = False
+        closing_index: int | None = None
+        for index in range(1, len(value)):
+            character = value[index]
+            if escaped:
+                escaped = False
+                continue
+            if quote == '"' and character == "\\":
+                escaped = True
+                continue
+            if character == quote:
+                closing_index = index
+                break
+        if closing_index is None:
+            return ""
+        suffix = value[closing_index + 1 :].strip()
+        if suffix and not suffix.startswith("#"):
+            return ""
+        normalized = value[1:closing_index]
+        if quote == '"':
+            normalized = normalized.replace('\\"', '"').replace("\\\\", "\\")
+        return normalized.strip()
+
+    for index, character in enumerate(value):
+        if character == "#" and (index == 0 or value[index - 1].isspace()):
+            value = value[:index]
+            break
+    return value.strip()
+
+
+def _parse_env_values(path: Path | str) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw_line in Path(path).read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
@@ -180,13 +216,13 @@ def _parse_env(path: Path | str) -> dict[str, str]:
         name, value = line.split("=", 1)
         name = name.strip()
         if _ENV_NAME.fullmatch(name):
-            values[name] = value.strip()
+            values[name] = _normalize_env_value(value)
     return values
 
 
 def parse_env_names(path: Path | str) -> set[str]:
     """Return variable names only; callers cannot accidentally expose values."""
-    return set(_parse_env(path))
+    return set(_parse_env_values(path))
 
 
 def _get_mapping(config: dict[str, Any], key: str) -> dict[str, Any] | None:
@@ -242,7 +278,7 @@ def validate_profile(profile: Path | str) -> list[Finding]:
     env_values: dict[str, str] = {}
     if env_path.is_file():
         try:
-            env_values = _parse_env(env_path)
+            env_values = _parse_env_values(env_path)
         except (OSError, UnicodeError) as error:
             findings.append(Finding("ERROR", "ENV_UNREADABLE", f"Cannot read .env: {error}"))
         if os.name != "nt":
@@ -253,10 +289,10 @@ def validate_profile(profile: Path | str) -> list[Finding]:
                 findings.append(Finding("WARN", "ENV_STAT_FAILED", f"Cannot inspect .env permissions: {error}"))
 
     for name in _REQUIRED_FEISHU:
-        if name not in env_values:
-            findings.append(Finding("ERROR", "ENV_MISSING", f"Required .env variable is missing: {name}"))
+        if not env_values.get(name, "").strip():
+            findings.append(Finding("ERROR", "ENV_MISSING", f"Required .env variable is missing or empty: {name}"))
     for name, allowed in _FEISHU_ENUMS.items():
-        if name in env_values:
+        if env_values.get(name, "").strip():
             value = env_values[name]
             if value not in allowed:
                 findings.append(Finding("ERROR", "ENV_INVALID", f"Invalid value for {name}"))
@@ -273,33 +309,79 @@ def validate_profile(profile: Path | str) -> list[Finding]:
             if not isinstance(provider_reference, str) or not provider_reference:
                 findings.append(Finding("ERROR", "MODEL_PROVIDER_MISSING", "model.provider is required"))
             else:
-                provider_name = provider_reference.partition(":")[2] if provider_reference.startswith("custom:") else provider_reference
                 providers = _get_mapping(config, "providers")
-                provider = providers.get(provider_name) if providers else None
-                if not isinstance(provider, dict):
-                    findings.append(Finding("ERROR", "PROVIDER_UNKNOWN", f"Provider is not configured: {provider_name}"))
-                else:
+
+                def check_provider(provider_name: str, provider: Any) -> None:
+                    if not isinstance(provider, dict):
+                        findings.append(Finding("ERROR", "PROVIDER_UNKNOWN", f"Provider is not configured: {provider_name}"))
+                        return
                     key_env = provider.get("key_env")
                     if not isinstance(key_env, str) or not key_env:
                         findings.append(Finding("ERROR", "PROVIDER_KEY_ENV_MISSING", f"providers.{provider_name}.key_env is required"))
-                    elif key_env not in env_values:
-                        findings.append(Finding("ERROR", "PROVIDER_KEY_MISSING", f".env is missing model key variable: {key_env}"))
+                    elif not env_values.get(key_env, "").strip():
+                        findings.append(Finding("ERROR", "PROVIDER_KEY_MISSING", f".env model key variable is missing or empty: {key_env}"))
+
+                if provider_reference.startswith("custom:"):
+                    provider_name = provider_reference.partition(":")[2]
+                    check_provider(
+                        provider_name,
+                        providers.get(provider_name) if providers else None,
+                    )
+                elif providers and provider_reference in providers:
+                    check_provider(provider_reference, providers[provider_reference])
+                else:
+                    findings.append(
+                        Finding(
+                            "WARN",
+                            "PROVIDER_UNVERIFIED",
+                            f"Built-in provider {provider_reference} has no local credential mapping; verify it with a direct model test",
+                        )
+                    )
 
         terminal = _get_mapping(config, "terminal")
         cwd_value = terminal.get("cwd") if terminal else None
         if not isinstance(cwd_value, str) or not cwd_value:
             findings.append(Finding("ERROR", "WORKSPACE_MISSING", "terminal.cwd must point to the workspace"))
         else:
+            cwd_value = cwd_value.strip()
             workspace = Path(cwd_value).expanduser()
-            if not workspace.is_absolute():
-                workspace = profile_path / workspace
-            if not workspace.is_dir():
-                findings.append(Finding("ERROR", "WORKSPACE_MISSING", f"terminal.cwd workspace does not exist: {workspace}"))
+            is_windows_absolute = bool(
+                re.match(r"^[A-Za-z]:[\\/]", cwd_value)
+                or cwd_value.startswith("\\\\")
+            )
+            is_posix_absolute = cwd_value.startswith("/")
+            if cwd_value.lower() in {"auto", "cwd"} or cwd_value == ".":
+                findings.append(
+                    Finding(
+                        "WARN",
+                        "WORKSPACE_UNVERIFIED",
+                        f"terminal.cwd uses runtime placeholder {cwd_value}; static validation cannot confirm workspace context",
+                    )
+                )
+            elif workspace.is_absolute():
+                if not workspace.is_dir():
+                    findings.append(Finding("ERROR", "WORKSPACE_MISSING", f"terminal.cwd workspace does not exist: {workspace}"))
+                else:
+                    for filename in _CONTEXT_FILES:
+                        finding = _context_finding(workspace / filename)
+                        if finding:
+                            findings.append(finding)
+            elif is_windows_absolute or is_posix_absolute:
+                findings.append(
+                    Finding(
+                        "WARN",
+                        "WORKSPACE_UNVERIFIED",
+                        "terminal.cwd is absolute for another platform; static validation cannot confirm workspace context",
+                    )
+                )
             else:
-                for filename in _CONTEXT_FILES:
-                    finding = _context_finding(workspace / filename)
-                    if finding:
-                        findings.append(finding)
+                findings.append(
+                    Finding(
+                        "ERROR",
+                        "WORKSPACE_RELATIVE",
+                        "terminal.cwd is a relative path whose runtime location cannot be validated safely",
+                    )
+                )
 
     return findings
 
