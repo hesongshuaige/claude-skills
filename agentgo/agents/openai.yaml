@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentGo"
+  short_description: "Build isolated Hermes agents with Feishu safely"
+  default_prompt: "Use $agentgo to create and verify an isolated Hermes agent with a dedicated Feishu bot."
