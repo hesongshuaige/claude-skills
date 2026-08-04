@@ -561,6 +561,24 @@ def _has_context_table_value(value: str) -> bool:
     return _has_context_value(candidate)
 
 
+def _looks_like_yaml_credential(value: str) -> bool:
+    candidate = value.strip().strip("'\"`<>[](){}.,;:")
+    if not _has_context_value(candidate) or re.search(r"\s", candidate):
+        return False
+    lowered = candidate.lower()
+    if any(marker in lowered for marker in ("sk-", "token", "secret")):
+        return True
+    if not re.fullmatch(r"[A-Za-z0-9+/=_-]+", candidate):
+        return False
+    if len(candidate) >= 8 and any(character in "+/=" for character in candidate):
+        return True
+    return (
+        len(candidate) >= 8
+        and any(character.isdigit() for character in candidate)
+        and len(set(candidate.lower())) >= 6
+    )
+
+
 def _looks_like_bearer_token(value: str) -> bool:
     candidate = value.strip().strip("'\"`<>[](){}.,;:")
     if _is_documentation_placeholder(candidate) or len(candidate) < 20:
@@ -596,11 +614,12 @@ def _sensitive_context_findings(path: Path) -> list[Finding]:
 
     categories: set[str] = set()
     for match in _CONTEXT_CREDENTIAL.finditer(content):
-        if match.group("operator") == ":" and not match.group("quote"):
-            continue
         value = match.group("value")
         if not _has_context_value(value):
             continue
+        if match.group("operator") == ":" and not match.group("quote"):
+            if not _looks_like_yaml_credential(value):
+                continue
         categories.add("CREDENTIAL")
     for match in _CONTEXT_CREDENTIAL_TABLE.finditer(content):
         value = match.group("value")

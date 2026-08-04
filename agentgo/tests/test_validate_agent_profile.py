@@ -473,6 +473,37 @@ class ValidateAgentProfileTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, self._output(result))
 
+    def test_context_yaml_colon_credential_shapes_are_detected(self) -> None:
+        cases = (
+            ("ACCESS_TOKEN: live_secret_abc123\n", "live_secret_abc123"),
+            ("API_KEY: sk-live-abc123\n", "sk-live-abc123"),
+        )
+        path = self.profile / "SOUL.md"
+        for content, value in cases:
+            with self.subTest(content=content):
+                path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("CREDENTIAL", output)
+                self.assertNotIn(value, output)
+
+    def test_context_yaml_colon_credential_explanations_are_ignored(self) -> None:
+        content = (
+            "TOKEN: used for authentication\n"
+            "SECRET: used for policy text\n"
+            "API_KEY: required\n"
+            "ACCESS_TOKEN: optional\n"
+        )
+        for path in (self.profile / "SOUL.md",) + tuple(
+            self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
+        ):
+            path.write_text(content, encoding="utf-8")
+
+        result = run_validator(self.profile, stage="full")
+
+        self.assertEqual(0, result.returncode, self._output(result))
+
     def test_context_bearer_and_private_key_categories_are_rejected(self) -> None:
         path = self.profile / "SOUL.md"
         cases = (
