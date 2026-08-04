@@ -229,6 +229,21 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertIn("WARN", output.upper())
         self.assertNotIn("PROVIDER_UNKNOWN", output)
 
+    def test_runtime_registry_providers_without_mappings_do_not_fail(self) -> None:
+        config_path = self.profile / "config.yaml"
+        original = config_path.read_text(encoding="utf-8")
+        for provider in ("openai-api", "anthropic", "xai-oauth"):
+            with self.subTest(provider=provider):
+                config_path.write_text(
+                    original.replace("custom:minimax", provider), encoding="utf-8"
+                )
+                result = run_validator(self.profile)
+                output = self._output(result)
+                self.assertEqual(0, result.returncode, output)
+                self.assertIn("WARN", output.upper())
+                self.assertNotIn("PROVIDER_UNKNOWN", output)
+        config_path.write_text(original, encoding="utf-8")
+
     def test_unknown_non_custom_provider_fails(self) -> None:
         config_path = self.profile / "config.yaml"
         content = config_path.read_text(encoding="utf-8")

@@ -38,18 +38,33 @@ _FEISHU_ENUMS = {
     "FEISHU_GROUP_POLICY": {"open", "allowlist", "disabled"},
     "FEISHU_REQUIRE_MENTION": {"true", "false"},
 }
-# Source: installed Hermes ``hermes-agent/cli.py`` AIAgent provider docs,
-# checked 2026-08-04. Keep this deliberately small and explicit.
-_BUILTIN_MODEL_PROVIDERS = {
-    "auto",
-    "openrouter",
-    "nous",
-    "openai-codex",
-    "zai",
-    "kimi-coding",
-    "minimax",
-    "minimax-cn",
-}
+# Authoritative source: the installed Hermes runtime's ``PROVIDER_REGISTRY``,
+# ``resolve_provider`` alias table, and ``is_runtime_provider_routable`` special
+# identities. This is a portable static fallback snapshot checked 2026-08-04;
+# it intentionally avoids importing Hermes or triggering plugin/network setup.
+_BUILTIN_MODEL_PROVIDERS = frozenset(
+    """
+    ai-gateway aigateway alibaba alibaba-cloud alibaba-coding
+    alibaba-coding-plan alibaba_coding alibaba_coding_plan amazon
+    amazon-bedrock anthropic arcee arcee-ai arceeai auto aws aws-bedrock
+    azure-foundry bedrock claude claude-code copilot copilot-acp
+    copilot-acp-agent custom dashscope deep-infra deepinfra deepinfra-ai
+    deepseek fireworks fireworks-ai fw gemini github github-copilot
+    github-copilot-acp github-model github-models glm gmi gmi-cloud gmicloud
+    go google google-ai-studio google-gemini grok grok-oauth hf hugging-face
+    huggingface huggingface-hub kilo kilo-code kilo-gateway kilocode kimi
+    kimi-cn kimi-coding kimi-coding-cn kimi-for-coding llama-cpp llama.cpp
+    llamacpp lm-studio lm_studio lmstudio mimo minimax minimax-china minimax-cn
+    minimax-global minimax-oauth minimax-portal minimax_cn minimax_oauth moa
+    moonshot moonshot-cn nous novita novita-ai novitaai nvidia nvidia-nim
+    ollama ollama-cloud ollama_cloud openai-api openai-codex opencode
+    opencode-go opencode-go-sub opencode-zen openrouter qwen qwen-cli
+    qwen-oauth qwen-portal solar step stepfun stepfun-coding-plan tencent
+    tencent-cloud tencent-tokenhub tencentmaas tokenhub upstage vercel
+    vercel-ai-gateway vertex vllm x-ai x-ai-oauth x.ai xai xai-grok-oauth
+    xai-oauth xiaomi xiaomi-mimo z-ai z.ai zai zen zhipu
+    """.split()
+)
 
 
 def _strip_yaml_comment(value: str) -> str:
