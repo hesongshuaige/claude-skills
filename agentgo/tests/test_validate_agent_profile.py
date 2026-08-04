@@ -336,7 +336,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
         # Current Hermes profile loading treats a missing/empty metadata file,
         # or description-only metadata, as directory identity + active status.
         profile_path = self.profile / "profile.yaml"
-        cases = (None, "", "description: ''\ndescription_auto: false\n")
+        cases = (None, "", "{}\n", "description: ''\ndescription_auto: false\n")
         for content in cases:
             with self.subTest(content=repr(content)):
                 if content is None:
@@ -352,12 +352,14 @@ class ValidateAgentProfileTests(unittest.TestCase):
             config_path.read_text(encoding="utf-8")
             + "approvals:\n"
             + "  mode: smart\n"
-            + "  smart_policy: |-\n"
+            + '  "smart_policy": |2-\n'
             + "    Require review for destructive commands.\n"
             + "    Allow read-only checks.\n"
-            + "unknown_notes: >\n"
+            + "unknown_notes: >-2\n"
             + "  First folded line.\n"
-            + "  Second folded line.\n",
+            + "  Second folded line.\n"
+            + "unknown_literal: |2\n"
+            + "  Explicit indentation.\n",
             encoding="utf-8",
         )
         result = run_validator(self.profile)
@@ -408,6 +410,66 @@ class ValidateAgentProfileTests(unittest.TestCase):
             self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
         ):
             path.write_text(safe_documentation, encoding="utf-8")
+        result = run_validator(self.profile, stage="full")
+        self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_context_natural_language_security_terms_are_not_secrets(self) -> None:
+        safe_prose = (
+            "The access token: expires after one hour.\n"
+            "Bearer authentication is described in the security guide.\n"
+            "The client secret: should be rotated by an administrator.\n"
+        )
+        for path in (self.profile / "SOUL.md",) + tuple(
+            self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
+        ):
+            path.write_text(safe_prose, encoding="utf-8")
+        result = run_validator(self.profile, stage="full")
+        self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_context_structured_secret_forms_are_detected_without_echoing(self) -> None:
+        values = {
+            self.profile / "SOUL.md": (
+                "| API_KEY | " + "sk-live-7a2c9f4e8b1d" + " |\n",
+                "CREDENTIAL",
+            ),
+            self.workspace / "AGENTS.md": (
+                "https://example.invalid/device?device_code="
+                + "ABCD-EFGH-7K2M"
+                + "\n",
+                "AUTHORIZATION_CODE",
+            ),
+            self.workspace / "README.md": (
+                "Application: " + "cli_a1b2c3d4e5f6g7h8" + "\n",
+                "FEISHU_APP_ID",
+            ),
+            self.workspace / "PROJECT.md": (
+                "Owner: " + "ou_a1b2c3d4e5f6g7h8i9j0" + "\n",
+                "FEISHU_OPEN_ID",
+            ),
+        }
+        for path, (content, category) in values.items():
+            with self.subTest(path=path.name, category=category):
+                path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(path.name, output)
+                self.assertIn(category, output)
+                self.assertNotIn(content.strip(), output)
+                path.write_text(f"# {path.name}\nSafe context.\n", encoding="utf-8")
+
+    def test_context_id_and_url_placeholders_are_not_secrets(self) -> None:
+        safe_values = (
+            "| ACCESS_TOKEN | ${ACCESS_TOKEN} |\n"
+            "https://example.invalid/device?user_code=XXXX-XXXX\n"
+            "Application: cli_xxx\n"
+            "Owner: ou_000000000000\n"
+            "Bearer authentication remains documentation only.\n"
+        )
+        for path in (self.profile / "SOUL.md",) + tuple(
+            self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
+        ):
+            path.write_text(safe_values, encoding="utf-8")
         result = run_validator(self.profile, stage="full")
         self.assertEqual(0, result.returncode, self._output(result))
 

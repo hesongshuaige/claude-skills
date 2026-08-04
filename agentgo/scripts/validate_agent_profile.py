@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+from urllib.parse import parse_qsl, urlsplit
 
 
 @dataclass(frozen=True)
@@ -39,12 +40,23 @@ _FEISHU_ENUMS = {
     "FEISHU_GROUP_POLICY": {"open", "allowlist", "disabled"},
     "FEISHU_REQUIRE_MENTION": {"true", "false"},
 }
+_CREDENTIAL_KEY_PATTERN = (
+    r"(?:API_KEY|APP_SECRET|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PASSWORD|"
+    r"[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET))"
+)
 _CONTEXT_CREDENTIAL = re.compile(
-    r'''(?im)"?(?:[A-Z0-9_]*(?:API_KEY|APP_SECRET|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PASSWORD|TOKEN|SECRET))"?\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
+    rf'''(?im)(?<![A-Z0-9_])"?{_CREDENTIAL_KEY_PATTERN}"?(?![A-Z0-9_])\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
+)
+_CONTEXT_CREDENTIAL_TABLE = re.compile(
+    rf"(?im)\|\s*{_CREDENTIAL_KEY_PATTERN}\s*\|\s*(?P<value>[^|\r\n]+)\|"
 )
 _CONTEXT_BEARER = re.compile(r"(?i)\bBearer\s+(?P<value>[^\s,]+)")
-_CONTEXT_PRIVATE_KEY = re.compile(
+_CONTEXT_PEM_PATTERN = re.compile(
     r"-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----", re.IGNORECASE
+)
+_CONTEXT_URL = re.compile(r'''https?://[^\s<>"']+''', re.IGNORECASE)
+_CONTEXT_FEISHU_ID = re.compile(
+    r"(?<![A-Za-z0-9_])(?P<kind>cli|ou)_(?P<suffix>[A-Za-z0-9]{10,})(?![A-Za-z0-9_])"
 )
 # Authoritative source: the installed Hermes runtime's ``PROVIDER_REGISTRY``,
 # ``resolve_provider`` alias table, and ``is_runtime_provider_routable`` special
@@ -225,6 +237,12 @@ def _parse_flow_collection(value: str) -> Any:
 def parse_simple_yaml(path: Path | str) -> dict:
     """Parse the mappings, scalars, and string lists used by Hermes config."""
     source = Path(path).read_text(encoding="utf-8-sig")
+    stripped_source = source.strip()
+    if stripped_source.startswith("{"):
+        parsed_flow = _parse_scalar(stripped_source)
+        if not isinstance(parsed_flow, dict):
+            raise ValueError("top-level YAML value must be a mapping")
+        return parsed_flow
     tokens: list[tuple[int, str, int]] = []
     source_lines = source.splitlines()
     source_index = 0
@@ -239,7 +257,7 @@ def parse_simple_yaml(path: Path | str) -> dict:
         indent = len(raw_line) - len(raw_line.lstrip(" "))
         content = raw_line[indent:]
         block_header = re.fullmatch(
-            r"((?:-\s+)?[A-Za-z0-9_.-]+\s*:)\s*[|>][+-]?(?:\s+#.*)?",
+            r'''((?:-\s+)?(?:[A-Za-z0-9_.-]+|"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')\s*:)\s*[|>](?:[1-9][+-]?|[+-][1-9]?|[+-])?(?:\s+#.*)?''',
             content,
         )
         if block_header:
@@ -334,9 +352,12 @@ def parse_simple_yaml(path: Path | str) -> dict:
 
             if ":" not in content:
                 raise ValueError(f"line {line_number}: expected key: value")
-            key, raw_value = content.split(":", 1)
-            key = key.strip()
-            if not _YAML_KEY.fullmatch(key):
+            raw_key, raw_value = content.split(":", 1)
+            raw_key = raw_key.strip()
+            key = _parse_scalar(raw_key) if raw_key[:1] in "'\"" else raw_key
+            if not isinstance(key, str) or not key or (
+                raw_key[:1] not in "'\"" and not _YAML_KEY.fullmatch(key)
+            ):
                 raise ValueError(f"line {line_number}: invalid mapping key")
             if key in container:
                 raise ValueError(f"line {line_number}: duplicate key {key}")
@@ -471,6 +492,38 @@ def _is_documentation_placeholder(value: str) -> bool:
     return _is_obvious_placeholder(normalized) or "dummy" in normalized.lower()
 
 
+def _looks_like_bearer_token(value: str) -> bool:
+    candidate = value.strip().strip("'\"`<>[](){}.,;:")
+    if _is_documentation_placeholder(candidate) or len(candidate) < 20:
+        return False
+    if candidate.lower().startswith("eyj") and candidate.count(".") >= 2:
+        return True
+    if re.fullmatch(r"[A-Fa-f0-9]{32,}", candidate):
+        return True
+    return (
+        len(candidate) >= 24
+        and any(character.isdigit() for character in candidate)
+        and (
+            any(character.isupper() for character in candidate)
+            or any(not character.isalnum() for character in candidate)
+        )
+        and len(set(candidate)) >= 8
+    )
+
+
+def _looks_like_authorization_code(value: str) -> bool:
+    code = value.strip()
+    if _is_documentation_placeholder(code):
+        return False
+    compact = re.sub(r"[-_.]", "", code)
+    return (
+        len(compact) >= 8
+        and compact.isalnum()
+        and any(character.isdigit() for character in compact)
+        and len(set(compact.lower())) >= 6
+    )
+
+
 def _sensitive_context_findings(path: Path) -> list[Finding]:
     try:
         content = path.read_text(encoding="utf-8")
@@ -481,11 +534,35 @@ def _sensitive_context_findings(path: Path) -> list[Finding]:
     for match in _CONTEXT_CREDENTIAL.finditer(content):
         if not _is_documentation_placeholder(match.group("value")):
             categories.add("CREDENTIAL")
-    for match in _CONTEXT_BEARER.finditer(content):
+    for match in _CONTEXT_CREDENTIAL_TABLE.finditer(content):
         if not _is_documentation_placeholder(match.group("value")):
+            categories.add("CREDENTIAL")
+    for match in _CONTEXT_BEARER.finditer(content):
+        if _looks_like_bearer_token(match.group("value")):
             categories.add("BEARER_TOKEN")
-    if _CONTEXT_PRIVATE_KEY.search(content):
+    if _CONTEXT_PEM_PATTERN.search(content):
         categories.add("PRIVATE_KEY")
+    for url_match in _CONTEXT_URL.finditer(content):
+        url = url_match.group(0).rstrip(".,;:!?)]}")
+        try:
+            query = parse_qsl(urlsplit(url).query, keep_blank_values=True)
+        except ValueError:
+            continue
+        for name, value in query:
+            if name.lower() in {
+                "code",
+                "device_code",
+                "user_code",
+                "authorization_code",
+            } and _looks_like_authorization_code(value):
+                categories.add("AUTHORIZATION_CODE")
+    for id_match in _CONTEXT_FEISHU_ID.finditer(content):
+        suffix = id_match.group("suffix")
+        if _is_documentation_placeholder(suffix):
+            continue
+        categories.add(
+            "FEISHU_APP_ID" if id_match.group("kind") == "cli" else "FEISHU_OPEN_ID"
+        )
 
     return [
         Finding(
