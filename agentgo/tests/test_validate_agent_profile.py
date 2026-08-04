@@ -10,20 +10,26 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PACKAGE_ROOT / "scripts" / "validate_agent_profile.py"
 WORKSPACE_CONTEXT_FILES = ("AGENTS.md", "README.md", "PROJECT.md")
 REQUIRED_FEISHU_ENV = {
-    "FEISHU_APP_ID": "cli_test_placeholder",
-    "FEISHU_APP_SECRET": "test-only-feishu-secret",
+    "FEISHU_APP_ID": "cli_fixture_7f3a9c",
+    "FEISHU_APP_SECRET": "synthetic-secret-8d21f6",
     "FEISHU_DOMAIN": "feishu",
     "FEISHU_CONNECTION_MODE": "websocket",
-    "FEISHU_ALLOWED_USERS": "ou_test_placeholder",
+    "FEISHU_ALLOWED_USERS": "ou_fixture_4e91bd",
     "FEISHU_GROUP_POLICY": "allowlist",
     "FEISHU_REQUIRE_MENTION": "true",
 }
 
 
-def run_validator(profile: Path) -> subprocess.CompletedProcess[str]:
+def run_validator(
+    profile: Path, stage: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    command = [sys.executable, str(SCRIPT)]
+    if stage is not None:
+        command.extend(("--stage", stage))
+    command.append(str(profile))
     try:
         return subprocess.run(
-            [sys.executable, str(SCRIPT), str(profile)],
+            command,
             text=True,
             capture_output=True,
             check=False,
@@ -73,7 +79,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
         )
         (self.profile / ".env").write_text(
             "\n".join(
-                ["MINIMAX_M3_API_KEY=test-only-model-secret"]
+                ["MINIMAX_M3_API_KEY=synthetic-model-key-3c8f2a"]
                 + [f"{name}={value}" for name, value in REQUIRED_FEISHU_ENV.items()]
                 + [""]
             ),
@@ -92,6 +98,131 @@ class ValidateAgentProfileTests(unittest.TestCase):
     def test_complete_profile_passes(self) -> None:
         result = run_validator(self.profile)
 
+        self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_model_stage_allows_pre_app_profile_but_full_rejects_it(self) -> None:
+        env_path = self.profile / ".env"
+        env_path.write_text(
+            "MINIMAX_M3_API_KEY=synthetic-model-key-3c8f2a\n",
+            encoding="utf-8",
+        )
+        (self.profile / "SOUL.md").unlink()
+        for filename in WORKSPACE_CONTEXT_FILES:
+            (self.workspace / filename).unlink()
+
+        model_result = run_validator(self.profile, stage="model")
+        full_result = run_validator(self.profile, stage="full")
+        default_result = run_validator(self.profile)
+
+        self.assertEqual(0, model_result.returncode, self._output(model_result))
+        self.assertNotEqual(0, full_result.returncode)
+        self.assertEqual(full_result.returncode, default_result.returncode)
+        self.assertEqual(full_result.stdout, default_result.stdout)
+
+    def test_cli_help_documents_validation_stages(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        output = self._output(result).lower()
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("--stage", output)
+        self.assertIn("model", output)
+        self.assertIn("full", output)
+
+    def test_full_stage_rejects_obvious_env_placeholders_without_echoing(self) -> None:
+        env_path = self.profile / ".env"
+        original = env_path.read_text(encoding="utf-8")
+        cases = {
+            "MINIMAX_M3_API_KEY": "<model-key>",
+            "FEISHU_APP_ID": "your-app-id",
+            "FEISHU_APP_SECRET": "changeme-secret",
+            "FEISHU_ALLOWED_USERS": "0000000000",
+        }
+        for name, placeholder in cases.items():
+            with self.subTest(name=name):
+                lines = [
+                    f"{name}={placeholder}" if line.startswith(f"{name}=") else line
+                    for line in original.splitlines()
+                ]
+                env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(name, output)
+                self.assertNotIn(placeholder, output)
+        env_path.write_text(original, encoding="utf-8")
+
+    def test_approvals_off_fails_while_safe_modes_pass(self) -> None:
+        config_path = self.profile / "config.yaml"
+        original = config_path.read_text(encoding="utf-8")
+        for mode, should_pass in (("off", False), ("smart", True), ("manual", True)):
+            with self.subTest(mode=mode):
+                config_path.write_text(
+                    original + f"approvals:\n  mode: {mode}\n", encoding="utf-8"
+                )
+                result = run_validator(self.profile)
+                if should_pass:
+                    self.assertEqual(0, result.returncode, self._output(result))
+                else:
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn("APPROVAL", self._output(result).upper())
+        config_path.write_text(original, encoding="utf-8")
+
+    def test_profile_yaml_must_parse_and_match_directory_name(self) -> None:
+        profile_path = self.profile / "profile.yaml"
+        cases = (
+            ("name: [unterminated\nstatus: active\n", "PROFILE_INVALID"),
+            ("name: another-agent\nstatus: active\n", "PROFILE_NAME"),
+            ("name: test-agent\nstatus:\n", "PROFILE_STATUS"),
+        )
+        for content, expected_code in cases:
+            with self.subTest(expected_code=expected_code):
+                profile_path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(expected_code, self._output(result))
+
+    def test_inactive_profile_status_warns_without_failing(self) -> None:
+        (self.profile / "profile.yaml").write_text(
+            "name: test-agent\nstatus: inactive\n", encoding="utf-8"
+        )
+        result = run_validator(self.profile)
+        output = self._output(result)
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("WARN", output.upper())
+        self.assertIn("PROFILE_STATUS", output)
+
+    def test_legacy_description_only_profile_uses_implicit_identity(self) -> None:
+        # Older Hermes profiles (including the deployed wxagent fixture) store
+        # only description metadata; their directory name and active presence
+        # are the effective identity/status.
+        (self.profile / "profile.yaml").write_text(
+            "description: Synthetic legacy profile\n"
+            "description_auto: false\n",
+            encoding="utf-8",
+        )
+        result = run_validator(self.profile)
+        self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_unrelated_flow_collections_and_mapping_lists_are_tolerated(self) -> None:
+        config_path = self.profile / "config.yaml"
+        config_path.write_text(
+            config_path.read_text(encoding="utf-8")
+            + "extra: [one, two]\n"
+            + "unknown_section:\n"
+            + "  - name: first\n"
+            + "    enabled: true\n"
+            + "  - name: second\n"
+            + "  - metadata:\n"
+            + "      owner: synthetic\n"
+            + "    name: third\n",
+            encoding="utf-8",
+        )
+        result = run_validator(self.profile)
         self.assertEqual(0, result.returncode, self._output(result))
 
     def test_complete_profile_with_block_lists_passes(self) -> None:
@@ -148,11 +279,11 @@ class ValidateAgentProfileTests(unittest.TestCase):
         secret = "fixture-secret-must-not-appear"
         (self.profile / ".env").write_text(
             f"WRONG_MODEL_KEY={secret}\n"
-            "FEISHU_APP_ID=cli_test_placeholder\n"
-            "FEISHU_APP_SECRET=test-only-feishu-secret\n"
+            "FEISHU_APP_ID=cli_fixture_7f3a9c\n"
+            "FEISHU_APP_SECRET=synthetic-secret-8d21f6\n"
             "FEISHU_DOMAIN=feishu\n"
             "FEISHU_CONNECTION_MODE=websocket\n"
-            "FEISHU_ALLOWED_USERS=ou_test_placeholder\n"
+            "FEISHU_ALLOWED_USERS=ou_fixture_4e91bd\n"
             "FEISHU_GROUP_POLICY=allowlist\n"
             "FEISHU_REQUIRE_MENTION=true\n",
             encoding="utf-8",

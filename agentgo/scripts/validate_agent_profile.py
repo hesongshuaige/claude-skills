@@ -20,7 +20,8 @@ class Finding:
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _YAML_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
-_REQUIRED_FILES = ("profile.yaml", "config.yaml", ".env", "SOUL.md")
+_MODEL_REQUIRED_FILES = ("profile.yaml", "config.yaml", ".env")
+_FULL_REQUIRED_FILES = _MODEL_REQUIRED_FILES + ("SOUL.md",)
 _REQUIRED_DIRECTORIES = ("skills", "sessions", "memories")
 _CONTEXT_FILES = ("AGENTS.md", "README.md", "PROJECT.md")
 _REQUIRED_FEISHU = (
@@ -95,8 +96,10 @@ def _parse_scalar(value: str) -> Any:
     value = _strip_yaml_comment(value).strip()
     if not value:
         raise ValueError("missing scalar value")
-    if value[0] in "[{" or value[-1:] in "]}":
-        raise ValueError("flow collections are not supported")
+    if value[0] in "[{":
+        return _parse_flow_collection(value)
+    if value[-1:] in "]}":
+        raise ValueError("unmatched flow collection delimiter")
     if value[0] in "'\"":
         quote = value[0]
         if len(value) < 2 or value[-1] != quote:
@@ -114,6 +117,98 @@ def _parse_scalar(value: str) -> Any:
     if lowered in {"null", "~"}:
         return None
     return value
+
+
+def _split_flow_items(value: str) -> list[str]:
+    items: list[str] = []
+    start = 0
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index, character in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote == '"':
+            escaped = True
+            continue
+        if character in "'\"":
+            if quote is None:
+                quote = character
+            elif quote == character:
+                quote = None
+            continue
+        if quote is not None:
+            continue
+        if character in "[{":
+            depth += 1
+        elif character in "]}":
+            depth -= 1
+            if depth < 0:
+                raise ValueError("unmatched flow collection delimiter")
+        elif character == "," and depth == 0:
+            items.append(value[start:index].strip())
+            start = index + 1
+    if quote is not None or depth != 0:
+        raise ValueError("unterminated flow collection")
+    items.append(value[start:].strip())
+    if any(not item for item in items):
+        raise ValueError("empty flow collection item")
+    return items
+
+
+def _split_mapping_entry(value: str) -> tuple[str, str] | None:
+    quote: str | None = None
+    escaped = False
+    depth = 0
+    for index, character in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote == '"':
+            escaped = True
+            continue
+        if character in "'\"":
+            if quote is None:
+                quote = character
+            elif quote == character:
+                quote = None
+            continue
+        if quote is not None:
+            continue
+        if character in "[{":
+            depth += 1
+        elif character in "]}":
+            depth -= 1
+        elif character == ":" and depth == 0 and (
+            index + 1 == len(value) or value[index + 1].isspace()
+        ):
+            return value[:index].strip(), value[index + 1 :].strip()
+    return None
+
+
+def _parse_flow_collection(value: str) -> Any:
+    opener = value[0]
+    closer = "]" if opener == "[" else "}"
+    if not value.endswith(closer):
+        raise ValueError("unterminated flow collection")
+    inner = value[1:-1].strip()
+    if not inner:
+        return [] if opener == "[" else {}
+    parts = _split_flow_items(inner)
+    if opener == "[":
+        return [_parse_scalar(part) for part in parts]
+    mapping: dict[str, Any] = {}
+    for part in parts:
+        entry = _split_mapping_entry(part)
+        if entry is None:
+            raise ValueError("flow mapping entry must contain a colon")
+        raw_key, raw_value = entry
+        key = _parse_scalar(raw_key)
+        if not isinstance(key, str) or not key or key in mapping:
+            raise ValueError("invalid or duplicate flow mapping key")
+        mapping[key] = _parse_scalar(raw_value)
+    return mapping
 
 
 def parse_simple_yaml(path: Path | str) -> dict:
@@ -153,12 +248,40 @@ def parse_simple_yaml(path: Path | str) -> dict:
                 raw_item = content[1:].strip()
                 if not raw_item:
                     raise ValueError(f"line {line_number}: list item must be a scalar")
-                container.append(_parse_scalar(raw_item))
+                mapping_entry = _split_mapping_entry(raw_item)
                 index += 1
+                if mapping_entry is None:
+                    container.append(_parse_scalar(raw_item))
+                    if index < len(tokens) and tokens[index][0] > block_indent:
+                        raise ValueError(
+                            f"line {tokens[index][2]}: scalar list item cannot have children"
+                        )
+                    continue
+
+                key, raw_value = mapping_entry
+                if not _YAML_KEY.fullmatch(key):
+                    raise ValueError(f"line {line_number}: invalid list mapping key")
+                item: dict[str, Any] = {}
+                mapping_indent = block_indent + 2
+                if raw_value:
+                    item[key] = _parse_scalar(raw_value)
+                elif index < len(tokens) and tokens[index][0] > mapping_indent:
+                    child_indent = tokens[index][0]
+                    item[key], index = parse_block(index, child_indent)
+                else:
+                    item[key] = {}
                 if index < len(tokens) and tokens[index][0] > block_indent:
-                    raise ValueError(
-                        f"line {tokens[index][2]}: scalar list item cannot have children"
-                    )
+                    child_indent = tokens[index][0]
+                    continuation, index = parse_block(index, child_indent)
+                    if not isinstance(continuation, dict):
+                        raise ValueError(
+                            f"line {line_number}: list mapping continuation must be a mapping"
+                        )
+                    duplicate_keys = item.keys() & continuation.keys()
+                    if duplicate_keys:
+                        raise ValueError(f"line {line_number}: duplicate list mapping key")
+                    item.update(continuation)
+                container.append(item)
                 continue
 
             if ":" not in content:
@@ -273,19 +396,63 @@ def _context_finding(path: Path) -> Finding | None:
     return None
 
 
-def validate_profile(profile: Path | str) -> list[Finding]:
+def _is_obvious_placeholder(value: str) -> bool:
+    normalized = value.strip().lower()
+    if not normalized:
+        return True
+    if re.fullmatch(r"<[^>]+>", normalized):
+        return True
+    if any(marker in normalized for marker in ("placeholder", "changeme", "redacted", "your-")):
+        return True
+    compact = re.sub(r"[^a-z0-9]", "", normalized)
+    return bool(compact) and set(compact) == {"0"}
+
+
+def validate_profile(profile: Path | str, stage: str = "full") -> list[Finding]:
     """Inspect a profile without changing it or contacting external services."""
     profile_path = Path(profile).expanduser()
     findings: list[Finding] = []
+    if stage not in {"model", "full"}:
+        return [Finding("ERROR", "STAGE_INVALID", "Validation stage must be model or full")]
     if not profile_path.is_dir():
         return [Finding("ERROR", "PROFILE_MISSING", f"Profile directory does not exist: {profile_path}")]
 
-    for name in _REQUIRED_FILES:
+    required_files = _FULL_REQUIRED_FILES if stage == "full" else _MODEL_REQUIRED_FILES
+    for name in required_files:
         if not (profile_path / name).is_file():
             findings.append(Finding("ERROR", "MISSING_FILE", f"Required profile file is missing: {name}"))
-    for name in _REQUIRED_DIRECTORIES:
-        if not (profile_path / name).is_dir():
-            findings.append(Finding("ERROR", "MISSING_DIRECTORY", f"Required profile directory is missing: {name}"))
+    if stage == "full":
+        for name in _REQUIRED_DIRECTORIES:
+            if not (profile_path / name).is_dir():
+                findings.append(Finding("ERROR", "MISSING_DIRECTORY", f"Required profile directory is missing: {name}"))
+
+    profile_yaml_path = profile_path / "profile.yaml"
+    if profile_yaml_path.is_file():
+        try:
+            profile_data = parse_simple_yaml(profile_yaml_path)
+        except (OSError, UnicodeError, ValueError) as error:
+            findings.append(Finding("ERROR", "PROFILE_INVALID", f"Cannot parse profile.yaml: {error}"))
+        else:
+            profile_name = profile_data.get("name")
+            profile_status = profile_data.get("status")
+            # Legacy Hermes profiles, including deployed pre-metadata profiles,
+            # contain description fields only. In that exact shape Hermes uses
+            # the directory name as identity and presence as implicit active.
+            legacy_identity = (
+                "name" not in profile_data
+                and "status" not in profile_data
+                and isinstance(profile_data.get("description"), str)
+                and bool(profile_data["description"].strip())
+            )
+            if not legacy_identity:
+                if not isinstance(profile_name, str) or not profile_name.strip():
+                    findings.append(Finding("ERROR", "PROFILE_NAME_MISSING", "profile.yaml name must be non-empty"))
+                elif profile_name.strip() != profile_path.name:
+                    findings.append(Finding("ERROR", "PROFILE_NAME_MISMATCH", f"profile.yaml name must match directory name {profile_path.name}"))
+                if not isinstance(profile_status, str) or not profile_status.strip():
+                    findings.append(Finding("ERROR", "PROFILE_STATUS_MISSING", "profile.yaml status must be non-empty"))
+                elif profile_status.strip() != "active":
+                    findings.append(Finding("WARN", "PROFILE_STATUS_INACTIVE", "profile.yaml status is not active"))
 
     soul = profile_path / "SOUL.md"
     if soul.is_file():
@@ -308,23 +475,73 @@ def validate_profile(profile: Path | str) -> list[Finding]:
             env_values = _parse_env_values(env_path)
         except (OSError, UnicodeError) as error:
             findings.append(Finding("ERROR", "ENV_UNREADABLE", f"Cannot read .env: {error}"))
-        if os.name != "nt":
+        if stage == "full" and os.name != "nt":
             try:
                 if env_path.stat().st_mode & 0o077:
                     findings.append(Finding("WARN", "ENV_PERMISSIONS", ".env permissions are more open than 600"))
             except OSError as error:
                 findings.append(Finding("WARN", "ENV_STAT_FAILED", f"Cannot inspect .env permissions: {error}"))
 
-    for name in _REQUIRED_FEISHU:
-        if not env_values.get(name, "").strip():
-            findings.append(Finding("ERROR", "ENV_MISSING", f"Required .env variable is missing or empty: {name}"))
-    for name, allowed in _FEISHU_ENUMS.items():
-        if env_values.get(name, "").strip():
-            value = env_values[name]
-            if value not in allowed:
-                findings.append(Finding("ERROR", "ENV_INVALID", f"Invalid value for {name}"))
+    if stage == "full":
+        for name in _REQUIRED_FEISHU:
+            value = env_values.get(name, "").strip()
+            if not value:
+                findings.append(Finding("ERROR", "ENV_MISSING", f"Required .env variable is missing or empty: {name}"))
+            elif _is_obvious_placeholder(value):
+                findings.append(Finding("ERROR", "ENV_PLACEHOLDER", f"Required .env variable contains an obvious placeholder: {name}"))
+        for name, allowed in _FEISHU_ENUMS.items():
+            if env_values.get(name, "").strip():
+                value = env_values[name]
+                if value not in allowed:
+                    findings.append(Finding("ERROR", "ENV_INVALID", f"Invalid value for {name}"))
 
     if config is not None:
+        if "approvals" not in config:
+            findings.append(
+                Finding(
+                    "WARN",
+                    "APPROVALS_MODE_MISSING",
+                    "approvals.mode is missing; Hermes normally defaults to smart",
+                )
+            )
+        else:
+            approvals = _get_mapping(config, "approvals")
+            if approvals is None:
+                findings.append(
+                    Finding(
+                        "ERROR",
+                        "APPROVALS_MODE_INVALID",
+                        "approvals must be a mapping",
+                    )
+                )
+                approval_mode = None
+            else:
+                approval_mode = approvals.get("mode")
+            if approvals is not None and approval_mode is None:
+                findings.append(
+                    Finding(
+                        "WARN",
+                        "APPROVALS_MODE_MISSING",
+                        "approvals.mode is missing; Hermes normally defaults to smart",
+                    )
+                )
+            elif approval_mode == "off":
+                findings.append(
+                    Finding(
+                        "ERROR",
+                        "APPROVALS_DISABLED",
+                        "approvals.mode off disables command safety approval",
+                    )
+                )
+            elif approval_mode is not None and approval_mode not in {"smart", "manual"}:
+                findings.append(
+                    Finding(
+                        "ERROR",
+                        "APPROVALS_MODE_INVALID",
+                        "approvals.mode must be smart or manual",
+                    )
+                )
+
         model = _get_mapping(config, "model")
         if model is None:
             findings.append(Finding("ERROR", "MODEL_MISSING", "config.yaml must contain a model mapping"))
@@ -343,10 +560,12 @@ def validate_profile(profile: Path | str) -> list[Finding]:
                         findings.append(Finding("ERROR", "PROVIDER_UNKNOWN", f"Provider is not configured: {provider_name}"))
                         return
                     key_env = provider.get("key_env")
-                    if not isinstance(key_env, str) or not key_env:
+                    if not isinstance(key_env, str) or not key_env.strip():
                         findings.append(Finding("ERROR", "PROVIDER_KEY_ENV_MISSING", f"providers.{provider_name}.key_env is required"))
-                    elif not env_values.get(key_env, "").strip():
+                    elif not env_values.get(key_env.strip(), "").strip():
                         findings.append(Finding("ERROR", "PROVIDER_KEY_MISSING", f".env model key variable is missing or empty: {key_env}"))
+                    elif stage == "full" and _is_obvious_placeholder(env_values[key_env.strip()]):
+                        findings.append(Finding("ERROR", "PROVIDER_KEY_PLACEHOLDER", f".env model key variable contains an obvious placeholder: {key_env}"))
 
                 if provider_reference.startswith("custom:"):
                     provider_name = provider_reference.partition(":")[2]
@@ -396,7 +615,7 @@ def validate_profile(profile: Path | str) -> list[Finding]:
             elif workspace.is_absolute():
                 if not workspace.is_dir():
                     findings.append(Finding("ERROR", "WORKSPACE_MISSING", f"terminal.cwd workspace does not exist: {workspace}"))
-                else:
+                elif stage == "full":
                     for filename in _CONTEXT_FILES:
                         finding = _context_finding(workspace / filename)
                         if finding:
@@ -423,10 +642,16 @@ def validate_profile(profile: Path | str) -> list[Finding]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate a Hermes agent profile without modifying it")
+    parser.add_argument(
+        "--stage",
+        choices=("model", "full"),
+        default="full",
+        help="model checks the pre-app model gate; full also checks Feishu and workspace readiness (default: full)",
+    )
     parser.add_argument("profile", type=Path, help="path to the Hermes profile directory")
     try:
         arguments = parser.parse_args(argv)
-        findings = validate_profile(arguments.profile)
+        findings = validate_profile(arguments.profile, stage=arguments.stage)
     except KeyboardInterrupt:
         print("[ERROR] INTERRUPTED: validation interrupted")
         return 130
