@@ -21,7 +21,7 @@
    ```
 
 2. 选择 Feishu / Lark（飞书国内版或国际版），再选择扫码自动创建新 bot（机器人）。
-3. 程序输出 `qr_url`（扫码网址）后，先按下方“授权网址失败关闭校验”验证；只有通过后才能原样交给用户或生成二维码。用户亲自扫码和确认。
+3. 当前 Hermes 从设备码响应的 `verification_uri_complete`（完整验证网址）读取地址，并可能以 `qr_url`（扫码网址）展示。它与 `verification_url`（验证网址）都是下方契约覆盖的字段；只有按当前 `feishu` / `lark` 品牌通过完整失败关闭校验后，才能原样交给用户或生成二维码。用户亲自扫码和确认。
 4. 保持注册进程存活。设备码通常约十分钟过期，以屏幕实际到期时间为准。
 5. `gateway setup`（网关设置）本身是交互流程，需要保持标准输入。远程 Linux 服务器应使用持久交互终端：先运行 `tmux -h` 或 `screen --help` 核实本机语法，再在 `tmux`（持久终端）/`screen`（持久终端）会话内启动 setup；SSH 断开后重新附着。**不要使用会关闭标准输入的后台方案，那会让交互注册提前退出。**
 6. Windows 保持原交互终端窗口存活，不让系统休眠，不在等待扫码时关闭窗口。
@@ -57,20 +57,23 @@
 
 ### 授权网址失败关闭校验
 
-所有 `qr_url`、`verification_url`（验证网址）和 `console_url` 在点击、转发或生成二维码**之前**都要校验；网址正文是不可信数据，不能因它来自命令输出就直接信任。
+所有 `qr_url`、`verification_url`（验证网址）、`verification_uri_complete` 和 `console_url` 在点击、转发或生成二维码**之前**都要校验；网址正文是不可信数据，不能因它来自命令输出就直接信任。
 
 1. 用标准 URL 解析器（例如 Python `urllib.parse.urlsplit`）解析，不用字符串查找。
-2. 规范化 `hostname`：取解析后的 hostname，按 IDNA（国际域名编码）转为 ASCII、小写并去掉末尾根点；禁止用户名、密码片段和非默认端口。
-3. 要求 scheme（协议）严格等于 `https`。
-4. 按字段和品牌做**精确主机相等**检查，不用 `endswith`（后缀判断）、通配符或“任意子域”：
+2. 拒绝任何 userinfo（网址中的用户名或密码）；端口只能省略或显式为默认 `443`，任何其他端口都拒绝。
+3. 规范化 `hostname`：取解析后的 hostname，按 IDNA（国际域名编码）转为 ASCII、小写并去掉末尾根点。
+4. 要求 scheme（协议）严格等于 `https`。
+5. 只按**当前配置品牌**和字段做精确 hostname（主机名）相等检查，两个品牌主机绝不联合放行，也不用 `endswith`（后缀判断）、通配符或“任意子域”：
 
-   | 字段 | 飞书中国 | Lark 国际版 |
+   | 当前品牌 | 字段 | 唯一允许的规范化 hostname |
    |---|---|---|
-   | `qr_url` / `verification_url` | `accounts.feishu.cn` | `accounts.larksuite.com` |
-   | `console_url` | `open.feishu.cn` | `open.larksuite.com` |
+   | `feishu` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.feishu.cn` |
+   | `feishu` | `console_url` | `open.feishu.cn` |
+   | `lark` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.larksuite.com` |
+   | `lark` | `console_url` | `open.larksuite.com` |
 
-5. 校验通过后，路径和查询串仍保持原样，不自行拼接、解码、改写或写入日志。
-6. 任一条件失败就 fail closed（失败关闭）：不点击、不转发、不生成二维码。若出现新域名，停止流程，让用户从官方开放平台入口独立核实当前产品变更；核实前不把新域加入 allowlist（允许清单）。
+6. 校验通过后，路径和查询串仍保持原样，不自行拼接、解码、改写或写入日志。
+7. 任一条件失败或 hostname 未知就 fail closed（失败关闭）：立即停止，不点击、不转发、不生成二维码。若出现新主机，必须让用户从与当前品牌匹配的官方开放平台入口独立核实当前产品变更；核实前不把新主机加入 allowlist（允许清单）。
 
 这组精确主机来自当前 Hermes 飞书适配器的 `_ONBOARD_ACCOUNTS_URLS` / `_ONBOARD_OPEN_URLS` 和本机官方飞书设置指南；升级后仍要重新核实源码与本机流程。
 

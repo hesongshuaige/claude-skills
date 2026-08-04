@@ -4,6 +4,24 @@
 
 任何修复命令执行前，先运行对应本机 `--help`（帮助）。每次只改一项，重测当前层；日志只摘错误类型和变量名，不贴密钥值。
 
+## 授权网址统一失败关闭契约
+
+排障中出现的 `console_url`、`verification_url`、`verification_uri_complete` 和 `qr_url` 都是不可信数据。任何点击、打开、原样交给用户、转发或生成二维码之前，必须完整执行：
+
+1. 用标准 URL 解析器（例如 Python `urllib.parse.urlsplit`）解析，并要求 scheme（协议）严格为 `https`。
+2. 拒绝任何 userinfo（网址中的用户名或密码）；端口只能省略或显式为默认 `443`，任何其他端口都拒绝。
+3. 取解析后的 `hostname`，按 IDNA（国际域名编码）转 ASCII、小写并去掉末尾根点。
+4. 只按当前配置品牌与字段做精确 hostname（主机名）相等检查，两个品牌主机绝不联合放行，也禁止后缀匹配、通配符或任意子域：
+
+   | 当前品牌 | 字段 | 唯一允许的规范化 hostname |
+   |---|---|---|
+   | `feishu` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.feishu.cn` |
+   | `feishu` | `console_url` | `open.feishu.cn` |
+   | `lark` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.larksuite.com` |
+   | `lark` | `console_url` | `open.larksuite.com` |
+
+任一步失败或 hostname 未知就 fail closed（失败关闭）：立即停止，不点击、不打开、不转发、不生成二维码。出现新主机时，必须由用户从与当前品牌匹配的官方开放平台入口独立核实；核实前不得加入 allowlist（允许清单）。只有全部通过后，才保持完整路径和查询串不变并原样传递。
+
 | 现象 | 根因判断 | 最小修复与复测 |
 |---|---|---|
 | 模型返回 `401` 或 `Missing Authentication`（缺少鉴权） | `providers.<name>.key_env` 与 `.env` 左侧变量名不一致，或变量为空 | 只比较变量名和是否非空，不打印值；修正后重启当前会话，重跑模型直连。 |
@@ -16,9 +34,9 @@
 | 改 `.env`/`config.yaml` 后行为不变 | 当前 profile 网关未重启，或重启了错误档案 | 核对 profile 和服务名，运行本机帮助支持的 `gateway restart`，再看新日志时间。 |
 | 群聊不回复 | 规则过滤或事件未到达 | 严格按顺序查：是否 `@` 机器人 → `FEISHU_REQUIRE_MENTION` → `FEISHU_GROUP_POLICY` → 发送者是否在 `FEISHU_ALLOWED_USERS` → 应用事件/权限。 |
 | 私聊可用，用户知识库失败 | 把 bot 权限误当 user 授权，或反之 | 先查应用 scope，再查用户 consent 与 `auth status`，最后用显式 `--as user` 做只读测试。 |
-| 错误带 `required_scope`/`console_url` | 当前应用缺少 scope，不一定是用户没授权 | 原样交给用户在当前新应用控制台确认；发布后再测。不得自动加权限。 |
+| 错误带 `required_scope`/`console_url` | 当前应用缺少 scope，不一定是用户没授权 | 先执行上方完整契约：解析后只收 HTTPS、无 userinfo、端口省略或为 443；当前品牌为 `feishu` 时 `console_url` 必须精确等于 `open.feishu.cn`，当前品牌为 `lark` 时必须精确等于 `open.larksuite.com`，绝不联合放行。未知即停止且不打开、不转发。通过后才原样交给用户在当前新应用控制台确认；不得自动加权限。 |
 | lark-cli 结果属于旧应用或错误身份 | lark-cli profile 绑定了旧 App ID、错误 Hermes profile，或默认身份不符 | 用 `whoami`、配置显示和档案名交叉核对；用户确认后重新绑定当前新应用。 |
-| 设备码授权一直失败 | verification URL（验证网址）被聊天客户端截断、转义或自行拼接修改 | 原样转发完整 URL；必要时用工具对原 URL 生成二维码；过期后重新发起。 |
+| 设备码授权一直失败 | `verification_url` / `verification_uri_complete` / `qr_url` 被聊天客户端截断、转义或自行拼接修改 | 先执行上方完整契约：解析后只收 HTTPS、无 userinfo、端口省略或为 443；当前品牌为 `feishu` 时这些字段必须精确等于 `accounts.feishu.cn`，当前品牌为 `lark` 时必须精确等于 `accounts.larksuite.com`，绝不联合放行。未知即停止且不打开、不转发、不生成二维码。通过后才原样转发完整 URL 或生成二维码；过期后重新发起。 |
 | `auth status` 有令牌但资源仍拒绝 | 应用 scope 未开、资源未共享，或调用没显式 `--as user` | 分开检查应用权限、资源访问权和调用身份；不静默降级成 bot。 |
 | `AGENTS.md` 存在但规则未加载 | 文件不在当前 `cwd`，`terminal.cwd` 指错，或用了 `--ignore-rules`/`--safe-mode` | 修正 `terminal.cwd`，把文件放在该目录根部，开新会话复述规则验证。 |
 | 验证器报空凭据 | `.env` 中变量存在但值为空、只有空白或无效占位符 | 用户在安全终端重新录入真实值；验证只报告变量名。 |

@@ -225,23 +225,45 @@ class SkillPackageTests(unittest.TestCase):
             self.assertIn(marker, user_auth)
         self.assertIn("不能把 `--domain` 标成只读", user_auth)
 
-        for text in (feishu, user_auth):
-            with self.subTest(url_contract=text[:40]):
+        troubleshooting = texts["troubleshooting.md"]
+        authorization_refs = {
+            "feishu-bot-and-permissions.md": feishu,
+            "lark-user-authorization.md": user_auth,
+            "troubleshooting.md": troubleshooting,
+        }
+        for filename, text in authorization_refs.items():
+            with self.subTest(url_contract=filename):
                 for marker in (
                     "urlsplit",
                     "https",
+                    "verification_uri_complete",
+                    "userinfo",
+                    "`443`",
+                    "任何其他端口都拒绝",
                     "accounts.feishu.cn",
                     "accounts.larksuite.com",
                     "open.feishu.cn",
                     "open.larksuite.com",
+                    "当前品牌",
                     "精确",
+                    "绝不联合放行",
                     "失败关闭",
                     "不可信数据",
-                    "不点击、不转发、不生成二维码",
+                    "hostname 未知",
+                    "立即停止",
+                    "独立核实",
+                    "不转发",
+                    "不生成二维码",
                 ):
                     self.assertIn(marker, text)
+                for mapping in (
+                    "`feishu` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.feishu.cn`",
+                    "`feishu` | `console_url` | `open.feishu.cn`",
+                    "`lark` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.larksuite.com`",
+                    "`lark` | `console_url` | `open.larksuite.com`",
+                ):
+                    self.assertIn(mapping, text)
 
-        troubleshooting = texts["troubleshooting.md"]
         self.assertNotIn("后台运行时同时重定向", troubleshooting)
         for marker in ("tmux", "screen", "保持标准输入", "非交互子命令", "不能套用到交互式 `gateway setup`"):
             self.assertIn(marker, troubleshooting)
