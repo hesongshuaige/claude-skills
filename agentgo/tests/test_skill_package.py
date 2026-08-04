@@ -200,21 +200,49 @@ class SkillPackageTests(unittest.TestCase):
                     any(placeholder in text for filename, text in texts.items() if filename != owner)
                 )
 
+        body_owners = {
+            "## 服务风格": "SOUL.md.template",
+            "## 工具与权限": "AGENTS.md.template",
+            "## 验收": "AGENTS.md.template",
+            "## 自动运行": "README.md.template",
+            "## 按需可用": "README.md.template",
+            "## 尚未启用": "README.md.template",
+            "填写格式（每项一行）": "README.md.template",
+            "## 数据流": "PROJECT.md.template",
+            "输入来源：": "PROJECT.md.template",
+            "输出目标：": "PROJECT.md.template",
+            "## 总体状态": "PROJECT.md.template",
+        }
+        for marker, owner in body_owners.items():
+            with self.subTest(marker=marker):
+                locations = [filename for filename, text in texts.items() if marker in text]
+                self.assertEqual([owner], locations)
+
     def test_templates_distinguish_continuing_and_new_authorization(self) -> None:
         template_dir = PACKAGE_ROOT / "assets" / "templates"
-        for filename in ("SOUL.md.template", "AGENTS.md.template", "PROJECT.md.template"):
+        texts = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in template_dir.glob("*.template")
+        }
+        agents = texts["AGENTS.md.template"]
+        full_rule_markers = (
+            "目标、范围、频率固定",
+            "可直接执行",
+            "新增任务",
+            "改变范围、频率或接收人",
+            "超出授权边界",
+            "高风险写入、删除、权限变更",
+            "必须先确认对象、范围与后果",
+        )
+        for marker in full_rule_markers:
+            with self.subTest(marker=marker):
+                self.assertIn(marker, agents)
+                self.assertEqual(1, sum(text.count(marker) for text in texts.values()))
+
+        for filename in ("SOUL.md.template", "README.md.template", "PROJECT.md.template"):
             with self.subTest(filename=filename):
-                text = (template_dir / filename).read_text(encoding="utf-8")
-                for marker in (
-                    "持续授权",
-                    "目标、范围、频率固定",
-                    "可直接执行",
-                    "新增任务",
-                    "改变范围、频率或接收人",
-                    "超出授权边界",
-                    "高风险写入、删除、权限变更",
-                    "必须先确认",
-                ):
+                text = texts[filename]
+                for marker in ("权限、持续授权和事故处置", "AGENTS.md", "唯一事实来源", "本文件不重复"):
                     self.assertIn(marker, text)
 
     def test_readme_capability_entries_require_operational_fields(self) -> None:
@@ -240,8 +268,29 @@ class SkillPackageTests(unittest.TestCase):
 
         for marker in ("可编辑", "结论先行", "表达简洁", "一次只问一个", "阻塞"):
             self.assertIn(marker, soul)
-        for marker in ("脱敏", "密钥", "令牌", "临时授权", "日志", "立即清理", "轮换"):
+        for marker in (
+            "疑似泄露",
+            "停止使用相关凭据",
+            "清理或脱敏",
+            "密钥",
+            "令牌",
+            "临时授权",
+            "日志与临时材料",
+            "通知负责人",
+            "已有预授权的事故响应流程",
+            "自动轮换或吊销",
+            "否则必须先确认",
+        ):
             self.assertIn(marker, agents)
+
+    def test_project_requires_a_concrete_overall_status(self) -> None:
+        project = (
+            PACKAGE_ROOT / "assets" / "templates" / "PROJECT.md.template"
+        ).read_text(encoding="utf-8")
+
+        for marker in ("档案与模型", "飞书连接", "自动任务", "最近验证日期", "未决风险"):
+            self.assertIn(marker, project)
+        self.assertIn("具体能力明细只在 `README.md` 更新", project)
 
     def test_skill_frontmatter_has_only_name_and_description(self) -> None:
         frontmatter = read_frontmatter(PACKAGE_ROOT / "SKILL.md")
