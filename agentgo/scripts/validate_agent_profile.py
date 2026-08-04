@@ -45,7 +45,7 @@ _CREDENTIAL_KEY_PATTERN = (
     r"[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET))"
 )
 _CONTEXT_CREDENTIAL = re.compile(
-    rf'''(?im)(?<![A-Z0-9_])(?P<quote>["']?)(?P<key>{_CREDENTIAL_KEY_PATTERN})(?P=quote)(?![A-Z0-9_])\s*(?P<operator>[:=])\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
+    rf'''(?im)(?<![A-Z0-9_])(?P<quote>["']?)(?P<key>{_CREDENTIAL_KEY_PATTERN})(?P=quote)(?![A-Z0-9_])\s*(?P<operator>[:=])\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\r\n#]+)'''
 )
 _CONTEXT_CREDENTIAL_TABLE = re.compile(
     rf"(?im)\|\s*(?P<key>{_CREDENTIAL_KEY_PATTERN})\s*\|\s*(?P<value>[^|\r\n]+)\|"
@@ -89,6 +89,7 @@ _CONTEXT_DOCUMENTATION_VALUES = frozenset(
         "short",
         "token",
         "this-is-a-code",
+        "used",
         "待填",
         "填写",
         "unset",
@@ -565,18 +566,7 @@ def _looks_like_yaml_credential(value: str) -> bool:
     candidate = value.strip().strip("'\"`<>[](){}.,;:")
     if not _has_context_value(candidate) or re.search(r"\s", candidate):
         return False
-    lowered = candidate.lower()
-    if any(marker in lowered for marker in ("sk-", "token", "secret")):
-        return True
-    if not re.fullmatch(r"[A-Za-z0-9+/=_-]+", candidate):
-        return False
-    if len(candidate) >= 8 and any(character in "+/=" for character in candidate):
-        return True
-    return (
-        len(candidate) >= 8
-        and any(character.isdigit() for character in candidate)
-        and len(set(candidate.lower())) >= 6
-    )
+    return bool(candidate)
 
 
 def _looks_like_bearer_token(value: str) -> bool:

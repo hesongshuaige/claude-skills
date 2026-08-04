@@ -477,6 +477,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
         cases = (
             ("ACCESS_TOKEN: live_secret_abc123\n", "live_secret_abc123"),
             ("API_KEY: sk-live-abc123\n", "sk-live-abc123"),
+            ("TOKEN: abc123 # documentation comment\n", "abc123"),
         )
         path = self.profile / "SOUL.md"
         for content, value in cases:
@@ -490,8 +491,9 @@ class ValidateAgentProfileTests(unittest.TestCase):
 
     def test_context_yaml_colon_credential_explanations_are_ignored(self) -> None:
         content = (
-            "TOKEN: used for authentication\n"
+            "TOKEN: used for authentication # documentation comment\n"
             "SECRET: used for policy text\n"
+            "TOKEN: used\n"
             "API_KEY: required\n"
             "ACCESS_TOKEN: optional\n"
         )
@@ -503,6 +505,23 @@ class ValidateAgentProfileTests(unittest.TestCase):
         result = run_validator(self.profile, stage="full")
 
         self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_context_yaml_colon_short_scalar_credentials_are_detected(self) -> None:
+        cases = (
+            ("TOKEN: abc123\n", "abc123"),
+            ("ACCESS_TOKEN: abc123\n", "abc123"),
+            ("API_KEY: abc123\n", "abc123"),
+            ("TOKEN: abcdefgh\n", "abcdefgh"),
+        )
+        path = self.profile / "SOUL.md"
+        for content, value in cases:
+            with self.subTest(content=content):
+                path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("CREDENTIAL", output)
+                self.assertNotIn(value, output)
 
     def test_context_bearer_and_private_key_categories_are_rejected(self) -> None:
         path = self.profile / "SOUL.md"
