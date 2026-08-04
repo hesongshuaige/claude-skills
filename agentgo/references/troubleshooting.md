@@ -11,7 +11,7 @@
 | `unknown provider`（未知供应商） | `model.provider` 拼写、`custom:` 前缀或 `providers` 映射名不一致 | 逐字核对名称和本机 Hermes 支持格式，不靠猜测新增供应商。 |
 | 网关报 App ID 已被占用、两个机器人互踢 | 两个 profile 复用了同一应用，常由 clone（克隆）凭据造成 | 停止新网关，为新 profile 创建独立应用；不得通过重试抢连接。 |
 | 扫码链接失效 | 设备码约十分钟过期，或注册进程已经退出 | 重新发起；保持进程存活。后台运行时同时重定向 `stdin`（标准输入）、输出和错误。 |
-| SSH 断开后扫码进程退出 | 只用了后台符号，未重定向标准输入或未使用持久会话 | 按已验证命令使用 `nohup ... </dev/null >... 2>&1 &`；临时日志验完即删。 |
+| SSH 断开后扫码进程退出 | `gateway setup` 是交互流程，却放进关闭标准输入的后台任务 | 先查 `tmux -h` 或 `screen --help`，在持久交互终端里重新运行并保持标准输入；不要使用关闭标准输入的后台方案。 |
 | PowerShell 经 SSH 传中文变成 `?` 或乱码 | 中文正文经过命令参数/管道编码转换 | 本地生成 UTF-8 文件，通过 SFTP/SCP（文件上传）传字节；远端按 UTF-8 回读。 |
 | 改 `.env`/`config.yaml` 后行为不变 | 当前 profile 网关未重启，或重启了错误档案 | 核对 profile 和服务名，运行本机帮助支持的 `gateway restart`，再看新日志时间。 |
 | 群聊不回复 | 规则过滤或事件未到达 | 严格按顺序查：是否 `@` 机器人 → `FEISHU_REQUIRE_MENTION` → `FEISHU_GROUP_POLICY` → 发送者是否在 `FEISHU_ALLOWED_USERS` → 应用事件/权限。 |
@@ -48,3 +48,10 @@
 影响：<后续哪些层仍未验证>
 下一步：<需要用户确认或可安全继续的动作>
 ```
+
+## 下一步与相关资料
+
+- 模型和 profile 错误回到[档案与模型](hermes-profile-and-model.md)。
+- 飞书消息错误回到[机器人与网关](feishu-bot-and-permissions.md)。
+- 用户资源错误回到[lark-cli 用户授权](lark-user-authorization.md)。
+- 修复后运行[只读 profile 验证器](../scripts/validate_agent_profile.py)。

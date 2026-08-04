@@ -150,6 +150,50 @@ class SkillPackageTests(unittest.TestCase):
                 for topic in topics:
                     self.assertIn(topic.casefold(), text.casefold(), f"{filename} lacks {topic}")
 
+    def test_operational_references_preserve_reviewed_safety_contracts(self) -> None:
+        reference_dir = PACKAGE_ROOT / "references"
+        texts = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in reference_dir.glob("*.md")
+        }
+
+        profile = texts["hermes-profile-and-model.md"]
+        for marker in ("自动绕过", "--safe-mode", "--toolsets safe", "空白临时 cwd"):
+            self.assertIn(marker, profile)
+
+        feishu = texts["feishu-bot-and-permissions.md"]
+        for marker in ("im.message.receive_v1", "im:message:send_as_bot", "tmux", "screen"):
+            self.assertIn(marker, feishu)
+        self.assertNotIn("nohup", feishu.casefold())
+
+        user_auth = texts["lark-user-authorization.md"]
+        for marker in ("--scope", "wiki:wiki:readonly", "bitable:app:readonly"):
+            self.assertIn(marker, user_auth)
+        self.assertIn("不能把 `--domain` 标成只读", user_auth)
+
+        context = texts["context-files-and-prompts.md"]
+        for marker in ("动态", "20,000", "保守下限", "只放在 profile 根目录"):
+            self.assertIn(marker, context)
+        for link in (
+            "../scripts/validate_agent_profile.py",
+            "../assets/templates/SOUL.md.template",
+            "../assets/templates/AGENTS.md.template",
+            "../assets/templates/README.md.template",
+            "../assets/templates/PROJECT.md.template",
+        ):
+            self.assertIn(link, context)
+
+        pressure = texts["pressure-scenarios.md"]
+        for marker in ("干净环境", "允许工具", "产物证据", "退出码", "至少 2 次", "总体通过门槛"):
+            self.assertIn(marker, pressure)
+        self.assertIn("`SOUL.md` 只位于 profile 根目录", pressure)
+        self.assertNotIn("四类文件位于配置指定的工作目录", pressure)
+
+        for filename, text in texts.items():
+            with self.subTest(filename=filename):
+                self.assertIn("下一步", text)
+                self.assertRegex(text, r"\[[^\]]+\]\([^\)]+\)")
+
     def test_required_templates_are_nonempty_and_have_role_placeholders(self) -> None:
         template_dir = PACKAGE_ROOT / "assets" / "templates"
         seen_placeholders = set()

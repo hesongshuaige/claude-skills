@@ -61,10 +61,10 @@ terminal:
 - 档案与模型、飞书连接、自动任务分别标真实状态。
 - 具体能力明细只维护在 `README.md`，避免双写漂移。
 
-## 4. 长度与编码
+## 4. 动态上下文预算与编码
 
-- 每个上下文文件上限 20,000 个字符；超出会发生头尾截断，中间规则可能丢失。
-- 生成后按字符数检查四个文件，接近上限就拆成技能或独立参考，不删安全边界。
+- 当前 Hermes 默认按模型上下文窗口动态计算单文件预算：20,000 字符是保守下限，较大窗口可增长；显式 `context_file_max_chars`（上下文文件字符预算）配置会覆盖动态值。
+- 为跨版本、跨模型可移植性，仍把 20,000 字符作为默认保守目标，而不是固定硬上限。超过该目标前先拆成技能或独立参考，不删安全边界，并用当前版本实际日志/配置确认预算。
 - 统一 UTF-8（通用中文编码）；Windows 向 Linux 传输时上传文件字节，不经 PowerShell（命令行）→ SSH（远程连接）的参数传中文正文。
 - Windows 记事本若生成 BOM（字节顺序标记）导致配置异常，重新保存为无 BOM 的 UTF-8。
 
@@ -72,11 +72,17 @@ terminal:
 
 - [ ] 从磁盘重新读取四个最终文件，不用生成前内存文本代替。
 - [ ] 搜索所有 `{{...}}` 和 `<...>` 占位符，确认无残留。
-- [ ] 每个文件字符数不超过 20,000。
-- [ ] `SOUL.md` 位于 profile 根目录；workspace 内可有用户说明副本，但根文件才是身份来源。
+- [ ] 每个文件优先控制在 20,000 字符内；若超过，已核对当前动态预算且确认没有截断警告。
+- [ ] `SOUL.md` **只放在 profile 根目录**，workspace 不放副本，避免身份双源。
 - [ ] `AGENTS.md` 位于 `terminal.cwd` 的准确目录。
 - [ ] 启动一次新会话，让智能体复述职责、权限边界和工作目录，用来验证实际加载。
 - [ ] 自动、按需、未启用三类能力没有互相矛盾。
 - [ ] 文件不含 App ID、App Secret、模型密钥、令牌、服务器地址、真实 open_id 或本机专属绝对路径。
 
 若使用 `--ignore-rules`（忽略规则）或 `--safe-mode`（安全排障模式），上下文可能被故意跳过；测试加载时不要带这些参数。
+
+## 下一步与相关资料
+
+- 生成时直接使用 [`SOUL.md.template`](../assets/templates/SOUL.md.template)、[`AGENTS.md.template`](../assets/templates/AGENTS.md.template)、[`README.md.template`](../assets/templates/README.md.template) 和 [`PROJECT.md.template`](../assets/templates/PROJECT.md.template)。
+- 回读后运行[只读 profile 验证器](../scripts/validate_agent_profile.py)。
+- 文件无误后进入[飞书机器人设置](feishu-bot-and-permissions.md)。

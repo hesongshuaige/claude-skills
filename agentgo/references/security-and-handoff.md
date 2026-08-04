@@ -80,3 +80,9 @@ workspace 路径：<WORKSPACE_PATH_ON_TARGET_HOST>
 - [ ] 默认只停止新增运行，不自动删除任何旧数据或应用。
 - [ ] 删除和吊销必须使用本机 `--help`（帮助）核实命令，并再次确认准确对象与不可逆后果。
 - [ ] 退役结果按层报告；“服务已停”不等于“凭据已吊销”或“数据已删除”。
+
+## 下一步与相关资料
+
+- 交接前执行[压力场景评测](pressure-scenarios.md)并保存真实证据。
+- 交接内容状态以[上下文文件职责](context-files-and-prompts.md)为准。
+- 发生泄露或权限故障时使用[故障排查](troubleshooting.md)。

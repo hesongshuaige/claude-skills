@@ -97,13 +97,33 @@ approvals:
 
 Linux 路径区分大小写，通常使用 `/`；Windows 盘符路径可用正斜杠以减少转义。Windows 向 Linux 传中文内容时，使用 UTF-8（通用中文编码）文件上传，不把正文塞进 PowerShell（命令行）到 SSH（远程连接）的参数。
 
-## 5. 网关前的模型直连测试
+## 5. 网关前的模型测试：这是人工受控风险门
 
-先查看一次性调用帮助：`<HERMES> --help`。再用当前版本支持的 profile 选择方式执行短测试，例如：
+> **醒目警告：`-z` / `--oneshot`（一次性执行）会自动绕过命令审批。** 当前 Hermes 帮助和 `hermes_cli/oneshot.py`（一次性执行源码）还确认：普通 `-z` 会照常加载当前目录规则、身份、记忆、技能和工具。因此绝不能在普通 profile、业务 workspace 或含不可信规则的 cwd 中把裸 `-z` 称为“安全测试”。
+
+先用只读验证器核对 profile 配置，不读取密钥值：
 
 ```text
-<HERMES> <PROFILE_SELECTOR> -z "Reply with exactly: OK"
+python <AGENTGO_DIR>/scripts/validate_agent_profile.py <PROFILE_DIR>
 ```
+
+再查看 `<HERMES> --help`、`<HERMES> chat --help` 和 `<HERMES> tools list --help`。推荐做法是**人工守在交互终端**，进入新建的空白临时 cwd，显式指定模型与供应商，并使用：
+
+- `--safe-mode`：禁用用户配置、`AGENTS.md`/`SOUL.md`、记忆、预加载技能、插件和 MCP（外部工具协议）；它会忽略 profile 模型配置，所以必须显式传 `--model` 与 `--provider`。
+- `--toolsets safe`：当前源码仅含只读网页/视觉和图片生成能力，不含终端、文件写入或代码执行；执行前仍要用本机工具列表复核。
+- 不带 `-z`、`--quiet`、`--yolo` 或 `--accept-hooks`；在交互会话中手工输入 `Reply with exactly: OK` 并观察全过程。
+
+命令形状经当前帮助核实如下；`<PROFILE_SELECTOR>` 仍以本机帮助为准：
+
+```text
+<HERMES> <PROFILE_SELECTOR> chat --safe-mode --toolsets safe --model <MODEL_NAME> --provider <PROVIDER_NAME>
+```
+
+Linux 用 `mktemp -d` 创建空目录并从该目录启动；Windows 用 `New-Item -ItemType Directory` 创建空临时目录并 `Push-Location` 进入。测试前确认目录为空、目标是新建 profile，且没有 skills（技能）、hooks（钩子）或业务文件。`--safe-mode` 会忽略用户配置但仍可读取环境凭据；密钥必须来自当前 profile 的安全环境，不能出现在参数里。
+
+若使用 `custom:<PROVIDER_NAME>`（自定义供应商），`--safe-mode` 会连同其配置映射一起忽略，可能无法解析供应商。此时不要为了让测试跑通而退回裸 `-z`：改在新建空 profile、空 cwd、无 skills/hooks 的人工交互终端中使用 `--ignore-rules --toolsets safe`，先核对实际工具列表不含终端、文件写入、代码执行和 MCP 工具，再输入短答。该路径不能完全消除启动侧自定义项，必须在报告中标为“人工受控风险门”，不能声称完全隔离。
+
+只有无人值守环境确有必要时，才可在同样的空 cwd、`--safe-mode --toolsets safe --model ... --provider ...` 隔离组合后使用 `-z`；仍须把它标为“审批已绕过”的受控风险测试，并由操作者确认 safe 工具集的本机实际内容。无法复核工具集合时，不得使用 `-z`，改用上面的人工交互门。
 
 通过标准：
 
@@ -113,3 +133,9 @@ Linux 路径区分大小写，通常使用 `/`；Windows 盘符路径可用正�
 - [ ] 输出和日志没有密钥值。
 
 失败就停止飞书和 gateway（消息网关）步骤，先修复模型。连接上飞书不等于智能体可用。
+
+## 下一步与相关资料
+
+- 模型和 profile 通过后，进入[飞书机器人与消息网关](feishu-bot-and-permissions.md)。
+- 生成工作目录文件时读取[上下文文件与提示词](context-files-and-prompts.md)。
+- 正式验收前运行[只读 profile 验证器](../scripts/validate_agent_profile.py)。

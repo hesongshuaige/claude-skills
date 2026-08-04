@@ -47,12 +47,14 @@ lark-cli --profile <LARK_PROFILE> config bind --source hermes --app-id <NEW_APP_
 
 适合智能体分回合交互的流程：
 
-1. 用户确认所需资源域和最小 scope（权限范围）。
+1. 用户确认所需资源和最小精确 scope（权限范围）。先对拟调用方法运行 `lark-cli schema <service.resource.method>`，从 `_meta.scopes` 中选择满足该方法的只读 scope；不要把整个业务域自动当成“只读”。
 2. 发起但不阻塞等待，要求结构化结果：
 
    ```text
-   lark-cli --profile <LARK_PROFILE> auth login --no-wait --json --domain <READ_ONLY_DOMAIN>
+   lark-cli --profile <LARK_PROFILE> auth login --no-wait --json --scope "wiki:wiki:readonly,bitable:app:readonly"
    ```
+
+   当前帮助确认 `--scope` 接收空格或逗号分隔的精确 scope。上例是知识空间与多维表格的只读起点；实际接口可能接受更窄的替代 scope，应以本机 `schema` 输出为准。`--domain wiki,base` 会请求对应业务域的一组权限，**只有用户明确接受该域整组权限时才使用**，不能把 `--domain` 标成只读捷径。
 
 3. 从结果读取 verification URL（验证网址）、device code（设备码）和到期信息。**URL 必须作为不透明字符串原样转发，不拼接、不解码重组、不删查询参数。**
 4. 如用户需要二维码，先看帮助，再把原 URL 传入：
@@ -97,3 +99,9 @@ lark-cli --profile <LARK_PROFILE> auth scopes --json
 - 机器人能看见某文档，不代表用户身份授权正确；反之亦然。
 - lark-cli 当前 profile、Hermes profile 和新应用任一不一致，都先停止授权并重新核对绑定。
 - 不把令牌、设备码结果全文、App ID 或用户 open_id（用户标识）写进仓库、交接和普通日志。
+
+## 下一步与相关资料
+
+- 授权完成后回到[飞书机器人分层验收](feishu-bot-and-permissions.md#5-分层测试逐层报告)。
+- scope 与 consent（用户同意）仍分不清时查看[故障排查](troubleshooting.md)。
+- 写操作前重新检查[安全与交接](security-and-handoff.md#3-自动任务授权边界)。
