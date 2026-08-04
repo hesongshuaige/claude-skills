@@ -51,7 +51,7 @@ On failure, use [troubleshooting.md](references/troubleshooting.md): change one 
 
 ## Verification and maintenance
 
-Rerun affected layers after changes. Pressure records require independent execution in the specified clean environment; otherwise leave them empty. Empty records or static review never prove readiness.
+Rerun affected layers after changes. Pressure records require independent execution in the specified clean environment; otherwise leave them empty. Empty records or static review never prove readiness. [Current forward evaluation](references/forward-eval-2026-08-04.md): behavior and safety gates passed consistently, but live E2E remains incomplete because scenarios 1-2 lacked a test tenant; do not claim stable production validation.
 
 ## Resources
 
@@ -62,6 +62,7 @@ Rerun affected layers after changes. Pressure records require independent execut
 - [troubleshooting.md](references/troubleshooting.md): isolated diagnosis and recovery.
 - [security-and-handoff.md](references/security-and-handoff.md): secrets, automation, handoff, retirement.
 - [pressure-scenarios.md](references/pressure-scenarios.md): independent stress evaluation.
+- [forward-eval-2026-08-04.md](references/forward-eval-2026-08-04.md): current evidence, limits, and live retest conditions.
 - [SOUL.md.template](assets/templates/SOUL.md.template): long-term identity.
 - [AGENTS.md.template](assets/templates/AGENTS.md.template): execution, authorization, acceptance.
 - [README.md.template](assets/templates/README.md.template): capability state and evidence.
