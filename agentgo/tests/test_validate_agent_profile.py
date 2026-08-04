@@ -206,6 +206,58 @@ class ValidateAgentProfileTests(unittest.TestCase):
         valid_result = run_validator(self.profile, stage="model")
         self.assertEqual(0, valid_result.returncode, self._output(valid_result))
 
+    def test_unresolved_variable_templates_are_rejected_without_echoing(self) -> None:
+        env_path = self.profile / ".env"
+        original = env_path.read_text(encoding="utf-8")
+        model_templates = (
+            "${MODEL_KEY}",
+            "$MODEL_KEY",
+            "{{MODEL_KEY}}",
+            "%MODEL_KEY%",
+            "$(MODEL_KEY)",
+        )
+        for template in model_templates:
+            with self.subTest(stage="model", template=template):
+                env_path.write_text(
+                    original.replace(
+                        "MINIMAX_M3_API_KEY=synthetic-model-key-3c8f2a",
+                        f"MINIMAX_M3_API_KEY={template}",
+                    ),
+                    encoding="utf-8",
+                )
+                result = run_validator(self.profile, stage="model")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("MINIMAX_M3_API_KEY", output)
+                self.assertNotIn(template, output)
+
+        for name, template in (
+            ("FEISHU_APP_ID", "${APP_ID}"),
+            ("FEISHU_APP_SECRET", "$APP_SECRET"),
+            ("FEISHU_ALLOWED_USERS", "{{ALLOWED_USERS}}"),
+        ):
+            with self.subTest(stage="full", name=name):
+                lines = [
+                    f"{name}={template}" if line.startswith(f"{name}=") else line
+                    for line in original.splitlines()
+                ]
+                env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(name, output)
+                self.assertNotIn(template, output)
+
+        env_path.write_text(
+            original.replace(
+                "MINIMAX_M3_API_KEY=synthetic-model-key-3c8f2a",
+                "MINIMAX_M3_API_KEY=sk-literal-$-braces-valid-7a2c",
+            ),
+            encoding="utf-8",
+        )
+        normal_result = run_validator(self.profile, stage="model")
+        self.assertEqual(0, normal_result.returncode, self._output(normal_result))
+
     def test_full_stage_rejects_xxx_feishu_placeholders_without_echoing(self) -> None:
         env_path = self.profile / ".env"
         original = env_path.read_text(encoding="utf-8")
@@ -278,6 +330,85 @@ class ValidateAgentProfileTests(unittest.TestCase):
             encoding="utf-8",
         )
         result = run_validator(self.profile)
+        self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_current_hermes_implicit_profile_metadata_shapes_pass(self) -> None:
+        # Current Hermes profile loading treats a missing/empty metadata file,
+        # or description-only metadata, as directory identity + active status.
+        profile_path = self.profile / "profile.yaml"
+        cases = (None, "", "description: ''\ndescription_auto: false\n")
+        for content in cases:
+            with self.subTest(content=repr(content)):
+                if content is None:
+                    profile_path.unlink(missing_ok=True)
+                else:
+                    profile_path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile)
+                self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_block_scalars_in_unknown_and_smart_policy_sections_pass(self) -> None:
+        config_path = self.profile / "config.yaml"
+        config_path.write_text(
+            config_path.read_text(encoding="utf-8")
+            + "approvals:\n"
+            + "  mode: smart\n"
+            + "  smart_policy: |-\n"
+            + "    Require review for destructive commands.\n"
+            + "    Allow read-only checks.\n"
+            + "unknown_notes: >\n"
+            + "  First folded line.\n"
+            + "  Second folded line.\n",
+            encoding="utf-8",
+        )
+        result = run_validator(self.profile)
+        self.assertEqual(0, result.returncode, self._output(result))
+
+    def test_each_context_location_rejects_secret_without_echoing(self) -> None:
+        locations = (self.profile / "SOUL.md",) + tuple(
+            self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
+        )
+        for path in locations:
+            with self.subTest(path=path.name):
+                secret = "actual-" + "credential-a1b2c3d4"
+                path.write_text("API" + f"_KEY={secret}\n", encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(path.name, output)
+                self.assertIn("CREDENTIAL", output)
+                self.assertNotIn(secret, output)
+                path.write_text(f"# {path.name}\nSafe context.\n", encoding="utf-8")
+
+    def test_context_bearer_and_private_key_categories_are_rejected(self) -> None:
+        path = self.profile / "SOUL.md"
+        cases = (
+            ("Authorization: Bearer " + "eyJfixture.payload.signature", "BEARER"),
+            ("-----BEGIN " + "PRIVATE KEY-----\nfixture\n", "PRIVATE_KEY"),
+        )
+        for content, category in cases:
+            with self.subTest(category=category):
+                path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(category, output)
+                self.assertNotIn(content.splitlines()[0], output)
+
+    def test_context_documentation_placeholders_are_not_secrets(self) -> None:
+        safe_documentation = (
+            "API_KEY=${API_KEY}\n"
+            "APP_SECRET=<redacted>\n"
+            "ACCESS_TOKEN={{ACCESS_TOKEN}}\n"
+            "REFRESH_TOKEN=$REFRESH_TOKEN\n"
+            "CLIENT_SECRET=dummy\n"
+            "PASSWORD=changeme\n"
+            "Authorization: Bearer <token>\n"
+        )
+        for path in (self.profile / "SOUL.md",) + tuple(
+            self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
+        ):
+            path.write_text(safe_documentation, encoding="utf-8")
+        result = run_validator(self.profile, stage="full")
         self.assertEqual(0, result.returncode, self._output(result))
 
     def test_unrelated_flow_collections_and_mapping_lists_are_tolerated(self) -> None:

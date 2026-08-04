@@ -20,7 +20,7 @@ class Finding:
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _YAML_KEY = re.compile(r"^[A-Za-z0-9_.-]+$")
-_MODEL_REQUIRED_FILES = ("profile.yaml", "config.yaml", ".env")
+_MODEL_REQUIRED_FILES = ("config.yaml", ".env")
 _FULL_REQUIRED_FILES = _MODEL_REQUIRED_FILES + ("SOUL.md",)
 _REQUIRED_DIRECTORIES = ("skills", "sessions", "memories")
 _CONTEXT_FILES = ("AGENTS.md", "README.md", "PROJECT.md")
@@ -39,6 +39,13 @@ _FEISHU_ENUMS = {
     "FEISHU_GROUP_POLICY": {"open", "allowlist", "disabled"},
     "FEISHU_REQUIRE_MENTION": {"true", "false"},
 }
+_CONTEXT_CREDENTIAL = re.compile(
+    r'''(?im)"?(?:[A-Z0-9_]*(?:API_KEY|APP_SECRET|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PASSWORD|TOKEN|SECRET))"?\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
+)
+_CONTEXT_BEARER = re.compile(r"(?i)\bBearer\s+(?P<value>[^\s,]+)")
+_CONTEXT_PRIVATE_KEY = re.compile(
+    r"-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----", re.IGNORECASE
+)
 # Authoritative source: the installed Hermes runtime's ``PROVIDER_REGISTRY``,
 # ``resolve_provider`` alias table, and ``is_runtime_provider_routable`` special
 # identities. This is a portable static fallback snapshot checked 2026-08-04;
@@ -219,13 +226,39 @@ def parse_simple_yaml(path: Path | str) -> dict:
     """Parse the mappings, scalars, and string lists used by Hermes config."""
     source = Path(path).read_text(encoding="utf-8-sig")
     tokens: list[tuple[int, str, int]] = []
-    for line_number, raw_line in enumerate(source.splitlines(), 1):
+    source_lines = source.splitlines()
+    source_index = 0
+    while source_index < len(source_lines):
+        raw_line = source_lines[source_index]
+        line_number = source_index + 1
         if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            source_index += 1
             continue
         if "\t" in raw_line[: len(raw_line) - len(raw_line.lstrip())]:
             raise ValueError(f"line {line_number}: tabs are not valid indentation")
         indent = len(raw_line) - len(raw_line.lstrip(" "))
-        tokens.append((indent, raw_line[indent:], line_number))
+        content = raw_line[indent:]
+        block_header = re.fullmatch(
+            r"((?:-\s+)?[A-Za-z0-9_.-]+\s*:)\s*[|>][+-]?(?:\s+#.*)?",
+            content,
+        )
+        if block_header:
+            tokens.append(
+                (indent, f"{block_header.group(1)} '__BLOCK_SCALAR__'", line_number)
+            )
+            source_index += 1
+            while source_index < len(source_lines):
+                block_line = source_lines[source_index]
+                if not block_line.strip():
+                    source_index += 1
+                    continue
+                block_indent = len(block_line) - len(block_line.lstrip(" "))
+                if block_indent <= indent:
+                    break
+                source_index += 1
+            continue
+        tokens.append((indent, content, line_number))
+        source_index += 1
 
     if not tokens:
         return {}
@@ -421,8 +454,47 @@ def _is_obvious_placeholder(value: str) -> bool:
         return True
     if re.search(r"(?:^|[-_])x{3,}(?=$|[-_])", normalized):
         return True
+    if (
+        re.fullmatch(r"\$\{[^{}]+\}", normalized)
+        or re.fullmatch(r"\$[a-z_][a-z0-9_]*", normalized)
+        or re.fullmatch(r"\$\([^)]+\)", normalized)
+        or re.fullmatch(r"\{\{[^{}]+\}\}", normalized)
+        or re.fullmatch(r"%[a-z_][a-z0-9_]*%", normalized)
+    ):
+        return True
     compact = re.sub(r"[^a-z0-9]", "", normalized)
     return bool(compact) and set(compact) == {"0"}
+
+
+def _is_documentation_placeholder(value: str) -> bool:
+    normalized = value.strip().strip("'\"`").strip()
+    return _is_obvious_placeholder(normalized) or "dummy" in normalized.lower()
+
+
+def _sensitive_context_findings(path: Path) -> list[Finding]:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return []
+
+    categories: set[str] = set()
+    for match in _CONTEXT_CREDENTIAL.finditer(content):
+        if not _is_documentation_placeholder(match.group("value")):
+            categories.add("CREDENTIAL")
+    for match in _CONTEXT_BEARER.finditer(content):
+        if not _is_documentation_placeholder(match.group("value")):
+            categories.add("BEARER_TOKEN")
+    if _CONTEXT_PRIVATE_KEY.search(content):
+        categories.add("PRIVATE_KEY")
+
+    return [
+        Finding(
+            "ERROR",
+            f"CONTEXT_{category}",
+            f"{path.name} contains a sensitive {category} value",
+        )
+        for category in sorted(categories)
+    ]
 
 
 def validate_profile(
@@ -456,14 +528,12 @@ def validate_profile(
         else:
             profile_name = profile_data.get("name")
             profile_status = profile_data.get("status")
-            # Legacy Hermes profiles, including deployed pre-metadata profiles,
-            # contain description fields only. In that exact shape Hermes uses
-            # the directory name as identity and presence as implicit active.
+            # Current Hermes profile loading accepts absent/empty metadata and
+            # description-only legacy metadata. With neither modern identity
+            # key present, the directory name and active presence are implicit.
             legacy_identity = (
                 "name" not in profile_data
                 and "status" not in profile_data
-                and isinstance(profile_data.get("description"), str)
-                and bool(profile_data["description"].strip())
             )
             if not legacy_identity:
                 if not isinstance(profile_name, str) or not profile_name.strip():
@@ -480,6 +550,8 @@ def validate_profile(
         finding = _context_finding(soul)
         if finding:
             findings.append(finding)
+        if stage == "full":
+            findings.extend(_sensitive_context_findings(soul))
 
     config_path = profile_path / "config.yaml"
     config: dict[str, Any] | None = None
@@ -618,9 +690,12 @@ def validate_profile(
 
         def check_workspace_context(workspace_path: Path) -> None:
             for filename in _CONTEXT_FILES:
-                finding = _context_finding(workspace_path / filename)
+                context_path = workspace_path / filename
+                finding = _context_finding(context_path)
                 if finding:
                     findings.append(finding)
+                if context_path.is_file():
+                    findings.extend(_sensitive_context_findings(context_path))
 
         if not isinstance(cwd_value, str) or not cwd_value:
             findings.append(Finding("ERROR", "WORKSPACE_MISSING", "terminal.cwd must point to the workspace"))
