@@ -419,6 +419,8 @@ def _is_obvious_placeholder(value: str) -> bool:
         return True
     if any(marker in normalized for marker in ("placeholder", "changeme", "redacted", "your-")):
         return True
+    if re.search(r"(?:^|[-_])x{3,}(?=$|[-_])", normalized):
+        return True
     compact = re.sub(r"[^a-z0-9]", "", normalized)
     return bool(compact) and set(compact) == {"0"}
 

@@ -179,6 +179,55 @@ class ValidateAgentProfileTests(unittest.TestCase):
                 self.assertNotIn(placeholder, output)
         env_path.write_text(original, encoding="utf-8")
 
+    def test_model_stage_rejects_xxx_segment_without_false_positive(self) -> None:
+        env_path = self.profile / ".env"
+        original = env_path.read_text(encoding="utf-8")
+        placeholder = "sk-xxx"
+        env_path.write_text(
+            original.replace(
+                "MINIMAX_M3_API_KEY=synthetic-model-key-3c8f2a",
+                f"MINIMAX_M3_API_KEY={placeholder}",
+            ),
+            encoding="utf-8",
+        )
+        result = run_validator(self.profile, stage="model")
+        output = self._output(result)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("MINIMAX_M3_API_KEY", output)
+        self.assertNotIn(placeholder, output)
+
+        env_path.write_text(
+            original.replace(
+                "MINIMAX_M3_API_KEY=synthetic-model-key-3c8f2a",
+                "MINIMAX_M3_API_KEY=sk-exxxample-valid",
+            ),
+            encoding="utf-8",
+        )
+        valid_result = run_validator(self.profile, stage="model")
+        self.assertEqual(0, valid_result.returncode, self._output(valid_result))
+
+    def test_full_stage_rejects_xxx_feishu_placeholders_without_echoing(self) -> None:
+        env_path = self.profile / ".env"
+        original = env_path.read_text(encoding="utf-8")
+        cases = {
+            "FEISHU_APP_ID": "cli_xxx",
+            "FEISHU_APP_SECRET": "secret_xxx",
+            "FEISHU_ALLOWED_USERS": "ou_xxx",
+        }
+        for name, placeholder in cases.items():
+            with self.subTest(name=name):
+                lines = [
+                    f"{name}={placeholder}" if line.startswith(f"{name}=") else line
+                    for line in original.splitlines()
+                ]
+                env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(name, output)
+                self.assertNotIn(placeholder, output)
+        env_path.write_text(original, encoding="utf-8")
+
     def test_approvals_off_fails_while_safe_modes_pass(self) -> None:
         config_path = self.profile / "config.yaml"
         original = config_path.read_text(encoding="utf-8")
