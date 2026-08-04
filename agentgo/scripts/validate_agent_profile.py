@@ -41,14 +41,47 @@ _FEISHU_ENUMS = {
     "FEISHU_REQUIRE_MENTION": {"true", "false"},
 }
 _CREDENTIAL_KEY_PATTERN = (
-    r"(?:API_KEY|APP_SECRET|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PASSWORD|"
+    r"(?:API_KEY|APP_SECRET|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PASSWORD|TOKEN|SECRET|"
     r"[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET))"
 )
 _CONTEXT_CREDENTIAL = re.compile(
-    rf'''(?im)(?<![A-Z0-9_])"?{_CREDENTIAL_KEY_PATTERN}"?(?![A-Z0-9_])\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
+    rf'''(?im)(?<![A-Z0-9_])(?P<key>"?{_CREDENTIAL_KEY_PATTERN}"?)(?![A-Z0-9_])\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
 )
 _CONTEXT_CREDENTIAL_TABLE = re.compile(
-    rf"(?im)\|\s*{_CREDENTIAL_KEY_PATTERN}\s*\|\s*(?P<value>[^|\r\n]+)\|"
+    rf"(?im)\|\s*(?P<key>{_CREDENTIAL_KEY_PATTERN})\s*\|\s*(?P<value>[^|\r\n]+)\|"
+)
+_CONTEXT_URL_SENSITIVE_QUERY_NAMES = frozenset(
+    {
+        "code",
+        "device_code",
+        "user_code",
+        "authorization_code",
+        "token",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "key",
+    }
+)
+_CONTEXT_DOCUMENTATION_VALUES = frozenset(
+    {
+        "access_token",
+        "authorization",
+        "authorization_code",
+        "code",
+        "device_code",
+        "example",
+        "expires",
+        "key",
+        "optional",
+        "refresh_token",
+        "required",
+        "sample",
+        "secret",
+        "token",
+        "user_code",
+        "value",
+    }
 )
 _CONTEXT_BEARER = re.compile(r"(?i)\bBearer\s+(?P<value>[^\s,]+)")
 _CONTEXT_PEM_PATTERN = re.compile(
@@ -471,7 +504,10 @@ def _is_obvious_placeholder(value: str) -> bool:
         return True
     if re.fullmatch(r"<[^>]+>", normalized):
         return True
-    if any(marker in normalized for marker in ("placeholder", "changeme", "redacted", "your-")):
+    if any(
+        marker in normalized
+        for marker in ("placeholder", "changeme", "redacted", "example", "sample", "your-")
+    ):
         return True
     if re.search(r"(?:^|[-_])x{3,}(?=$|[-_])", normalized):
         return True
@@ -490,6 +526,37 @@ def _is_obvious_placeholder(value: str) -> bool:
 def _is_documentation_placeholder(value: str) -> bool:
     normalized = value.strip().strip("'\"`").strip()
     return _is_obvious_placeholder(normalized) or "dummy" in normalized.lower()
+
+
+def _is_context_documentation_value(value: str) -> bool:
+    candidate = value.strip().strip("'\"`<>[](){}.,;:").strip().lower()
+    return not candidate or candidate in _CONTEXT_DOCUMENTATION_VALUES
+
+
+def _has_context_value(value: str) -> bool:
+    candidate = value.strip().strip("'\"`").strip()
+    return (
+        bool(candidate)
+        and not _is_documentation_placeholder(candidate)
+        and not _is_context_documentation_value(candidate)
+    )
+
+
+def _looks_like_credential(value: str) -> bool:
+    candidate = value.strip().strip("'\"`<>[](){}.,;:")
+    if _is_documentation_placeholder(candidate) or _is_context_documentation_value(candidate):
+        return False
+    if not re.fullmatch(r"[A-Za-z0-9._+/=-]+", candidate):
+        return False
+    compact = re.sub(r"[._-]", "", candidate)
+    if re.match(r"(?i)^(?:sk|pk|rk|key|tok(?:en)?|secret)[._-]", candidate):
+        return len(compact) >= 10 and len(set(compact.lower())) >= 6
+    if len(compact) < 16 or len(set(compact.lower())) < 8 or len(candidate) < 20:
+        return False
+    return any(character.isdigit() for character in candidate) and (
+        any(character.isupper() for character in candidate)
+        or any(not character.isalnum() for character in candidate)
+    )
 
 
 def _looks_like_bearer_token(value: str) -> bool:
@@ -512,15 +579,19 @@ def _looks_like_bearer_token(value: str) -> bool:
 
 
 def _looks_like_authorization_code(value: str) -> bool:
-    code = value.strip()
-    if _is_documentation_placeholder(code):
+    code = value.strip().strip("'\"`<>[](){}.,;:")
+    if _is_documentation_placeholder(code) or _is_context_documentation_value(code):
         return False
     compact = re.sub(r"[-_.]", "", code)
+    if len(compact) < 8 or not compact.isalnum() or len(set(compact.lower())) < 6:
+        return False
+    if any(character.isdigit() for character in compact):
+        return True
+    parts = re.split(r"[-_.]", code)
     return (
-        len(compact) >= 8
-        and compact.isalnum()
-        and any(character.isdigit() for character in compact)
-        and len(set(compact.lower())) >= 6
+        len(parts) >= 2
+        and all(part.isalpha() and part.isupper() for part in parts)
+        and len(compact) >= 10
     )
 
 
@@ -532,10 +603,20 @@ def _sensitive_context_findings(path: Path) -> list[Finding]:
 
     categories: set[str] = set()
     for match in _CONTEXT_CREDENTIAL.finditer(content):
-        if not _is_documentation_placeholder(match.group("value")):
-            categories.add("CREDENTIAL")
+        key = match.group("key").strip('"').upper()
+        value = match.group("value")
+        if not _has_context_value(value):
+            continue
+        if key in {"TOKEN", "SECRET"} and re.search(
+            r"(?i)\b(?:access|api|authentication|bearer|client|refresh|security|the|your)\s+$",
+            content[max(0, match.start() - 32) : match.start()],
+        ):
+            continue
+        categories.add("CREDENTIAL")
     for match in _CONTEXT_CREDENTIAL_TABLE.finditer(content):
-        if not _is_documentation_placeholder(match.group("value")):
+        key = match.group("key").upper()
+        value = match.group("value")
+        if (key == "PASSWORD" and _has_context_value(value)) or _looks_like_credential(value):
             categories.add("CREDENTIAL")
     for match in _CONTEXT_BEARER.finditer(content):
         if _looks_like_bearer_token(match.group("value")):
@@ -545,17 +626,24 @@ def _sensitive_context_findings(path: Path) -> list[Finding]:
     for url_match in _CONTEXT_URL.finditer(content):
         url = url_match.group(0).rstrip(".,;:!?)]}")
         try:
-            query = parse_qsl(urlsplit(url).query, keep_blank_values=True)
+            parsed_url = urlsplit(url)
         except ValueError:
             continue
-        for name, value in query:
-            if name.lower() in {
-                "code",
-                "device_code",
-                "user_code",
-                "authorization_code",
-            } and _looks_like_authorization_code(value):
-                categories.add("AUTHORIZATION_CODE")
+        for component in (parsed_url.query, parsed_url.fragment):
+            for name, value in parse_qsl(component, keep_blank_values=True):
+                query_name = name.lower()
+                if query_name not in _CONTEXT_URL_SENSITIVE_QUERY_NAMES:
+                    continue
+                if query_name in {
+                    "code",
+                    "device_code",
+                    "user_code",
+                    "authorization_code",
+                }:
+                    if _looks_like_authorization_code(value):
+                        categories.add("AUTHORIZATION_CODE")
+                elif _has_context_value(value):
+                    categories.add("CREDENTIAL")
     for id_match in _CONTEXT_FEISHU_ID.finditer(content):
         suffix = id_match.group("suffix")
         if _is_documentation_placeholder(suffix):
