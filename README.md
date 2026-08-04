@@ -1,6 +1,6 @@
 # 🧠 Claude Skills Collection
 
-19 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
+19 个可复用 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
 
 ## 技能索引
 
@@ -31,30 +31,63 @@
 ```bash
 # 克隆仓库
 git clone https://github.com/hesongshuaige/claude-skills.git
+```
 
+### 腾讯云 Linux 安装 AgentGo
+
+以下四种方式**任选一种**，不要把四块命令全部执行。
+
+**方式一：Claude Code**
+
+```bash
+mkdir -p ~/.claude/skills/agentgo
+cp -r claude-skills/agentgo/. ~/.claude/skills/agentgo/
+test -f ~/.claude/skills/agentgo/SKILL.md || { echo "AgentGo 安装检查失败"; exit 1; }
+```
+
+**方式二：Codex**
+
+```bash
+mkdir -p ~/.codex/skills/agentgo
+cp -r claude-skills/agentgo/. ~/.codex/skills/agentgo/
+test -f ~/.codex/skills/agentgo/SKILL.md || { echo "AgentGo 安装检查失败"; exit 1; }
+```
+
+**方式三：Hermes 默认 profile**
+
+先确认默认档案已经初始化，只创建其下的技能子目录：
+
+```bash
+hermes skills --help
+test -f "$HOME/.hermes/config.yaml" || { echo "Hermes 默认档案不存在，请先初始化"; exit 1; }
+mkdir -p ~/.hermes/skills/agentgo
+cp -r claude-skills/agentgo/. ~/.hermes/skills/agentgo/
+test -f ~/.hermes/skills/agentgo/SKILL.md || { echo "AgentGo 安装检查失败"; exit 1; }
+```
+
+**方式四：Hermes 命名 profile**
+
+先列出现有档案。必须把下面所有 `<真实档案名>` 替换为清单中的已有名称；存在性检查通过后，才会创建该档案下的技能子目录：
+
+```bash
+hermes skills --help
+hermes profile list
+test -f "$HOME/.hermes/profiles/<真实档案名>/profile.yaml" || { echo "Hermes 命名档案不存在，停止安装"; exit 1; }
+mkdir -p "$HOME/.hermes/profiles/<真实档案名>/skills/agentgo"
+cp -r claude-skills/agentgo/. "$HOME/.hermes/profiles/<真实档案名>/skills/agentgo/"
+test -f "$HOME/.hermes/profiles/<真实档案名>/skills/agentgo/SKILL.md" || { echo "AgentGo 安装检查失败"; exit 1; }
+```
+
+以上命令适用于已经克隆仓库的腾讯云 Linux。整目录复制是为了同时带上参考资料、模板、验证器和测试；不要只下载 `SKILL.md`。Hermes 的 profile 选择方式会随版本变化，必须以本机帮助和已有档案清单为准，不能靠 `mkdir` 新造档案根目录。安装检查通过后，重启当前客户端或新开会话，让技能重新加载。
+
+### 其他技能安装
+
+```bash
 # 安装单个技能到 Claude Code
 cp -r claude-skills/pb ~/.claude/skills/
 
 # 安装单个技能到 Codex
 cp -r claude-skills/pb ~/.codex/skills/
-
-# 腾讯云 Linux：安装 AgentGo 到 Claude Code 或 Codex
-mkdir -p ~/.claude/skills ~/.codex/skills
-mkdir -p ~/.claude/skills/agentgo ~/.codex/skills/agentgo
-cp -r claude-skills/agentgo/. ~/.claude/skills/agentgo/
-cp -r claude-skills/agentgo/. ~/.codex/skills/agentgo/
-
-# 腾讯云 Linux：安装 AgentGo 到 Hermes 前先核实当前版本
-hermes skills --help
-
-# 默认 profile
-mkdir -p ~/.hermes/skills/agentgo
-cp -r claude-skills/agentgo/. ~/.hermes/skills/agentgo/
-
-# 命名 profile（把 your-profile 换成真实名称）
-AGENTGO_PROFILE="your-profile"
-mkdir -p ~/.hermes/profiles/"$AGENTGO_PROFILE"/skills/agentgo
-cp -r claude-skills/agentgo/. ~/.hermes/profiles/"$AGENTGO_PROFILE"/skills/agentgo/
 
 # 推荐：使用各技能自带的 install.sh（自动检测 4 平台）
 cd claude-skills/hyfy && bash install.sh
@@ -71,11 +104,11 @@ for skill in claude-skills/*/; do
 done
 ```
 
-整目录复制是为了同时带上参考资料、模板、验证器和测试；不要只下载 `SKILL.md`。Hermes 的 profile 选择方式会随版本变化，安装后先运行 `hermes skills --help`、`hermes profile --help`，再按本机帮助确认目标 profile，不能照抄旧版选择参数。
-
 ## AgentGo 调用示例
 
 安装后，在 Claude Code、Codex 或已选中正确 profile 的 Hermes 会话中直接说：
+
+若没有自动触发，就在自然语言请求开头显式写 `$agentgo`；这不是 shell 命令，不要在终端里执行。
 
 ```text
 帮我新建一个独立的 Hermes 聊天机器人，只处理飞书私聊。请使用独立 profile 和独立飞书应用，先验证模型，再分层验收网关、主动发送和私聊；不要启用用户资源权限。
@@ -91,7 +124,7 @@ done
 
 ## AgentGo 当前验证状态
 
-已通过技能静态检查、profile 验证器测试和安全行为评测，两轮受限评测均为 9/12，安全违规 0。真实飞书应用创建、用户授权、消息端到端测试，以及真实 Windows 到 Linux 中文文件传输仍需在目标租户和主机验收；当前不能据此宣称完整生产可用。
+已通过技能静态检查、profile 验证器测试和两轮受限安全行为评测；两轮均为 9/12，安全违规 0。尚未完成 live E2E：真实飞书应用创建、用户授权、消息端到端测试，以及真实 Windows 到 Linux 中文文件传输仍需在目标租户和主机验收；当前不能据此宣称完整生产可用。
 
 ## 技能结构
 
@@ -133,12 +166,13 @@ skill-name/
 
 ## 兼容性
 
-所有技能均通过以下平台验证：
-- ✅ Claude Code (`~/.claude/skills/`)
-- ✅ Codex (`~/.codex/skills/`)
-- ✅ OpenClaw (`~/.openclaw/skills/`)
-- ✅ Hermes (`~/.hermes/skills/`)
-- ✅ Agents (`~/.agents/skills/`)
+仓库按以下常见技能目录和格式组织；这不表示每个技能都完成了全平台功能验证，具体功能验证以各技能自己的说明为准：
+
+- Claude Code (`~/.claude/skills/`)
+- Codex (`~/.codex/skills/`)
+- OpenClaw (`~/.openclaw/skills/`)
+- Hermes (`~/.hermes/skills/` 或命名 profile 的 `skills/` 子目录)
+- Agents (`~/.agents/skills/`)
 
 ## 许可
 
