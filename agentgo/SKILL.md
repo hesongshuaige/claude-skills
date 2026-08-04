@@ -43,7 +43,7 @@ Use `bot-only` for chat/shared bot resources. Use `user-default` only for person
 
 On failure, use troubleshooting: change one cause, retest that layer, preserve healthy parts. Rerun affected layers after changes. Pressure evidence requires independent clean execution.
 
-Current evaluation: two independent `9/12` runs, zero safety violations. Scenarios 1-2 lacked a tenant; 6 was local simulation. Live E2E is incomplete; make no production claim. See report/transcripts.
+Current evaluation: six constrained `9/12` runs (E/F baseline plus two runs each on the current commit by G/H), zero safety violations. Scenarios 1-2 lacked a tenant; 5 lacked a real model-interface fault; 6 was local simulation. Live E2E is incomplete; make no production claim. See report/transcripts.
 
 ## Resources
 
