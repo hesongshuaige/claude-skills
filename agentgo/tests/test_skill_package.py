@@ -17,11 +17,8 @@ TEMPLATE_PLACEHOLDERS = {
     "SOUL.md.template": {
         "{{AGENT_NAME}}",
         "{{ONE_LINE_ROLE}}",
-        "{{PERMISSION_BOUNDARIES}}",
     },
     "AGENTS.md.template": {
-        "{{INPUT_SOURCES}}",
-        "{{OUTPUT_TARGETS}}",
         "{{PERMISSION_BOUNDARIES}}",
         "{{VERIFICATION_RULES}}",
     },
@@ -35,9 +32,6 @@ TEMPLATE_PLACEHOLDERS = {
         "{{PRIMARY_USERS}}",
         "{{INPUT_SOURCES}}",
         "{{OUTPUT_TARGETS}}",
-        "{{AUTOMATIC_CAPABILITIES}}",
-        "{{ON_DEMAND_CAPABILITIES}}",
-        "{{NOT_ENABLED_CAPABILITIES}}",
     },
 }
 ALL_PLACEHOLDERS = {
@@ -170,7 +164,84 @@ class SkillPackageTests(unittest.TestCase):
                 self.assertEqual(set(), required - set(re.findall(r"\{\{[A-Z_]+\}\}", text)))
                 seen_placeholders.update(re.findall(r"\{\{[A-Z_]+\}\}", text))
 
-        self.assertEqual(ALL_PLACEHOLDERS, seen_placeholders & ALL_PLACEHOLDERS)
+        self.assertEqual(ALL_PLACEHOLDERS, seen_placeholders)
+
+    def test_templates_define_single_sources_of_truth(self) -> None:
+        template_dir = PACKAGE_ROOT / "assets" / "templates"
+        texts = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in template_dir.glob("*.template")
+        }
+
+        ownership = {
+            "SOUL.md.template": ("长期人格", "最高底线"),
+            "AGENTS.md.template": ("执行流程", "权限边界", "验收规则", "唯一事实来源"),
+            "README.md.template": ("能力三分组", "用户入口", "唯一事实来源"),
+            "PROJECT.md.template": ("项目目标", "数据流", "文件职责", "总体状态", "唯一事实来源"),
+        }
+        for filename, markers in ownership.items():
+            with self.subTest(filename=filename):
+                for marker in markers:
+                    self.assertIn(marker, texts[filename])
+
+        placeholder_owners = {
+            "{{INPUT_SOURCES}}": "PROJECT.md.template",
+            "{{OUTPUT_TARGETS}}": "PROJECT.md.template",
+            "{{PERMISSION_BOUNDARIES}}": "AGENTS.md.template",
+            "{{VERIFICATION_RULES}}": "AGENTS.md.template",
+            "{{AUTOMATIC_CAPABILITIES}}": "README.md.template",
+            "{{ON_DEMAND_CAPABILITIES}}": "README.md.template",
+            "{{NOT_ENABLED_CAPABILITIES}}": "README.md.template",
+        }
+        for placeholder, owner in placeholder_owners.items():
+            with self.subTest(placeholder=placeholder):
+                self.assertIn(placeholder, texts[owner])
+                self.assertFalse(
+                    any(placeholder in text for filename, text in texts.items() if filename != owner)
+                )
+
+    def test_templates_distinguish_continuing_and_new_authorization(self) -> None:
+        template_dir = PACKAGE_ROOT / "assets" / "templates"
+        for filename in ("SOUL.md.template", "AGENTS.md.template", "PROJECT.md.template"):
+            with self.subTest(filename=filename):
+                text = (template_dir / filename).read_text(encoding="utf-8")
+                for marker in (
+                    "持续授权",
+                    "目标、范围、频率固定",
+                    "可直接执行",
+                    "新增任务",
+                    "改变范围、频率或接收人",
+                    "超出授权边界",
+                    "高风险写入、删除、权限变更",
+                    "必须先确认",
+                ):
+                    self.assertIn(marker, text)
+
+    def test_readme_capability_entries_require_operational_fields(self) -> None:
+        text = (PACKAGE_ROOT / "assets" / "templates" / "README.md.template").read_text(
+            encoding="utf-8"
+        )
+        headings = ("自动运行", "按需可用", "尚未启用")
+        required_fields = ("触发条件", "输入", "输出", "运行身份/权限", "最近验证证据")
+        for heading in headings:
+            start = text.index(f"## {heading}")
+            end = text.find("\n## ", start + 1)
+            section = text[start:] if end == -1 else text[start:end]
+            with self.subTest(heading=heading):
+                for field in required_fields:
+                    self.assertIn(field, section)
+                if heading == "尚未启用":
+                    self.assertIn("启用条件", section)
+
+    def test_templates_cover_service_style_and_sensitive_log_cleanup(self) -> None:
+        template_dir = PACKAGE_ROOT / "assets" / "templates"
+        soul = (template_dir / "SOUL.md.template").read_text(encoding="utf-8")
+        agents = (template_dir / "AGENTS.md.template").read_text(encoding="utf-8")
+
+        for marker in ("可编辑", "结论先行", "表达简洁", "一次只问一个", "阻塞"):
+            self.assertIn(marker, soul)
+        for marker in ("脱敏", "密钥", "令牌", "临时授权", "日志", "立即清理", "轮换"):
+            self.assertIn(marker, agents)
 
     def test_skill_frontmatter_has_only_name_and_description(self) -> None:
         frontmatter = read_frontmatter(PACKAGE_ROOT / "SKILL.md")
