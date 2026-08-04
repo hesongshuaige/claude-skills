@@ -59,13 +59,16 @@
 
 所有 `qr_url`、`verification_url`（验证网址）、`verification_uri_complete` 和 `console_url` 都是不可信数据。不要在文档里另写一份解析器；统一调用[飞书授权网址验证器](../scripts/validate_feishu_url.py)，由脚本按当前品牌和字段检查 HTTPS（加密协议）、用户信息、端口与精确官方主机。
 
-先探测 Python（脚本解释器）：Linux 按 `python3` → `python` → Hermes 虚拟环境解释器，Windows 按 `py -3` → `python` → Hermes 虚拟环境解释器；把第一个成功入口记为 `<PYTHON>`。然后对**实际返回的字段名**运行：
+先探测 Python（脚本解释器）：Linux 按 `python3` → `python` → Hermes 虚拟环境解释器，Windows 按 `py -3` → `python` → Hermes 虚拟环境解释器；把第一个成功入口记为 `<PYTHON>`。用文件工具或安全字节通道把外部返回值写入可信临时文件，或启动进程后通过原始 stdin（标准输入）通道写入；不要把外部网址拼进 shell（命令字符串）。然后对**实际返回的字段名**运行：
 
 ```text
-<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --url "<EXACT_URL>"
+<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --url-file <TRUSTED_URL_FILE>
+<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --stdin
 ```
 
-退出码 `0` 才能保持路径和查询串不变并原样传递、打开或生成二维码。退出码 `1` 表示网址被拒绝，退出码 `2` 表示参数或调用错误；两者都必须立即停止，不打开、不转发、不生成二维码。未知主机不得临时放行，必须让用户从与当前品牌匹配的官方开放平台入口独立核实。
+只有退出码 `0` 才能保持路径和查询串不变并原样传递、打开或生成二维码。退出码 `1` 表示网址被拒绝，退出码 `2` 表示参数或调用错误；两者都必须立即停止，不打开、不转发、不生成二维码。`--url` 仅用于可信/测试输入，不用于外部返回值。未知主机不得临时放行，必须让用户从与当前品牌匹配的官方开放平台入口独立核实。
+
+二维码或后续网关调用使用结构化参数数组（例如 `subprocess.run([...], shell=False)`），数组中的网址只能是验证退出码 `0` 后的原值；不要把它重新拼成 shell 字符串。若当前执行环境无法保证结构化参数，就不执行外部命令，只向用户提供已验证链接。
 
 ## 3. 最小环境配置
 

@@ -56,18 +56,22 @@ lark-cli --profile <LARK_PROFILE> config bind --source hermes --app-id <NEW_APP_
 
    当前帮助确认 `--scope` 接收空格或逗号分隔的精确 scope。`schema` 只在当前 lark-cli 确实支持目标方法时作为辅助：先运行 `lark-cli schema --help`，再按其帮助查询；不支持该方法时不能阻断上述已知精确 scope 流程。`--domain wiki,base` 会请求对应业务域的一组权限，**只有用户明确接受该域整组权限时才使用**，不能把 `--domain` 标成只读捷径。
 
-3. 从结果读取 `verification_url` / `verification_uri_complete`（验证网址）、device code（设备码）和到期信息。先执行下方失败关闭校验；通过后 URL 才作为不透明字符串原样转发，不拼接、不解码重组、不删查询参数。
+3. 从结果读取 `verification_url` / `verification_uri_complete`（验证网址）、device code（设备码）和到期信息。先把网址用文件工具或安全字节写入可信临时文件，或通过原始 stdin（标准输入）通道送入下方验证器；通过后 URL 才作为不透明字符串原样转发，不拼接、不解码重组、不删查询参数。
 4. 如用户需要二维码，先看帮助并完成网址校验，再把原 URL 传入：
 
    ```text
-   lark-cli auth qrcode "<EXACT_VERIFICATION_URL>" --output <RELATIVE_QR_PATH>
+   qrcode_args = ["lark-cli", "--profile", "<LARK_PROFILE>", "auth", "qrcode", validated_url, "--output", "<RELATIVE_QR_PATH>"]
+   subprocess.run(qrcode_args, check=True, shell=False)
    ```
 
+   `validated_url` 只能来自验证器退出码 `0` 的原值；不能把网址插入 shell 字符串。无法保证结构化参数时不生成二维码，只向用户提供已验证链接。
+
 5. 用户打开链接或扫码并亲自同意授权；智能体暂停，不假装已完成。
-6. 用户确认后，用第一次返回的设备码轮询完成：
+6. 用户确认后，用第一次返回的设备码轮询完成；设备码也不能直接插入 shell，使用结构化参数数组：
 
    ```text
-   lark-cli --profile <LARK_PROFILE> auth login --device-code <EXACT_DEVICE_CODE> --json
+   login_args = ["lark-cli", "--profile", "<LARK_PROFILE>", "auth", "login", "--device-code", exact_device_code, "--json"]
+   subprocess.run(login_args, check=True, shell=False)
    ```
 
 7. 设备码过期就重新发起第 2 步，不复用旧 URL 或旧码。
@@ -76,13 +80,14 @@ lark-cli --profile <LARK_PROFILE> config bind --source hermes --app-id <NEW_APP_
 
 `verification_url`、`verification_uri_complete`、`qr_url` 和权限错误里的 `console_url` 全部视为不可信数据。统一调用[飞书授权网址验证器](../scripts/validate_feishu_url.py)，不复制手工解析规则。
 
-先探测 Python（脚本解释器）：Linux 按 `python3` → `python` → Hermes 虚拟环境解释器，Windows 按 `py -3` → `python` → Hermes 虚拟环境解释器；把第一个成功入口记为 `<PYTHON>`。对结果里的实际字段运行：
+先探测 Python（脚本解释器）：Linux 按 `python3` → `python` → Hermes 虚拟环境解释器，Windows 按 `py -3` → `python` → Hermes 虚拟环境解释器；把第一个成功入口记为 `<PYTHON>`。用文件工具或安全字节通道写入可信临时文件，或启动进程后通过原始 stdin（标准输入）通道传入；不要把外部网址拼进 shell（命令字符串）。对结果里的实际字段运行：
 
 ```text
-<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --url "<EXACT_URL>"
+<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --url-file <TRUSTED_URL_FILE>
+<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --stdin
 ```
 
-退出码 `0` 才能原样转发、打开或调用 `auth qrcode`（生成二维码）。退出码 `1` 表示网址被拒绝，退出码 `2` 表示参数或调用错误；两者都立即停止，不打开、不转发、不生成二维码。未知主机必须从与当前品牌匹配的官方入口独立核实，不能临时加入允许清单。
+退出码 `0` 才能原样转发、打开或调用 `auth qrcode`（生成二维码）。退出码 `1` 表示网址被拒绝，退出码 `2` 表示参数或调用错误；两者都立即停止，不打开、不转发、不生成二维码。`--url` 仅用于可信/测试输入，不用于外部返回值。未知主机必须从与当前品牌匹配的官方入口独立核实，不能临时加入允许清单。
 
 ## 5. 验证身份与授权
 
@@ -95,6 +100,8 @@ lark-cli --profile <LARK_PROFILE> auth scopes --json
 ```
 
 用户资源调用必须显式写 `--as user`（以用户身份），即使默认是 user-default 也不能靠隐式行为。具体资源命令先运行其 `--help`，必要时用 `schema`（接口结构查询）检查参数、风险和 scope。
+
+所有二维码、轮询和外部命令都使用结构化参数数组；只有 shell 字符串环境无法保证时不执行，并只向用户提供已验证链接。
 
 当前本机帮助确认以下是真实只读调用；先看各自 `--help`，再用用户明确允许的资源执行：
 

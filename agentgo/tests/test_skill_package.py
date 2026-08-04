@@ -305,18 +305,25 @@ class SkillPackageTests(unittest.TestCase):
                     "py -3",
                     "--brand <feishu|lark>",
                     "--field <qr_url|verification_url|verification_uri_complete|console_url>",
-                    '--url "<EXACT_URL>"',
+                    "--url-file <TRUSTED_URL_FILE>",
+                    "--stdin",
                     "verification_uri_complete",
                     "当前品牌",
                     "不可信数据",
                     "退出码 `0`",
                     "退出码 `1`",
                     "退出码 `2`",
+                    "结构化参数",
+                    "shell",
+                    "不执行",
+                    "--url` 仅用于可信/测试输入",
                     "独立核实",
                     "不转发",
                     "不生成二维码",
                 ):
                     self.assertIn(marker, text)
+                self.assertNotIn('--url "<EXACT_URL>"', text)
+                self.assertNotIn('--url "', text)
 
         self.assertNotIn("后台运行时同时重定向", troubleshooting)
         for marker in ("tmux", "screen", "保持标准输入", "非交互子命令", "不能套用到交互式 `gateway setup`"):
