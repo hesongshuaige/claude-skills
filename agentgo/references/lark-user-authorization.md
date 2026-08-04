@@ -47,14 +47,14 @@ lark-cli --profile <LARK_PROFILE> config bind --source hermes --app-id <NEW_APP_
 
 适合智能体分回合交互的流程：
 
-1. 用户确认所需资源和最小精确 scope（权限范围）。先对拟调用方法运行 `lark-cli schema <service.resource.method>`，从 `_meta.scopes` 中选择满足该方法的只读 scope；不要把整个业务域自动当成“只读”。
+1. 用户确认所需资源和最小精确 scope（权限范围）。当前已核实的知识空间与多维表格只读 scope 分别是精确的 `wiki:wiki:readonly` 和 `bitable:app:readonly`，可直接按需授权，不要求先运行 `schema`（接口结构查询）。
 2. 发起但不阻塞等待，要求结构化结果：
 
    ```text
    lark-cli --profile <LARK_PROFILE> auth login --no-wait --json --scope "wiki:wiki:readonly,bitable:app:readonly"
    ```
 
-   当前帮助确认 `--scope` 接收空格或逗号分隔的精确 scope。上例是知识空间与多维表格的只读起点；实际接口可能接受更窄的替代 scope，应以本机 `schema` 输出为准。`--domain wiki,base` 会请求对应业务域的一组权限，**只有用户明确接受该域整组权限时才使用**，不能把 `--domain` 标成只读捷径。
+   当前帮助确认 `--scope` 接收空格或逗号分隔的精确 scope。`schema` 只在当前 lark-cli 确实支持目标方法时作为辅助：先运行 `lark-cli schema --help`，再按其帮助查询；不支持该方法时不能阻断上述已知精确 scope 流程。`--domain wiki,base` 会请求对应业务域的一组权限，**只有用户明确接受该域整组权限时才使用**，不能把 `--domain` 标成只读捷径。
 
 3. 从结果读取 `verification_url` / `verification_uri_complete`（验证网址）、device code（设备码）和到期信息。先执行下方失败关闭校验；通过后 URL 才作为不透明字符串原样转发，不拼接、不解码重组、不删查询参数。
 4. 如用户需要二维码，先看帮助并完成网址校验，再把原 URL 传入：
@@ -74,24 +74,15 @@ lark-cli --profile <LARK_PROFILE> config bind --source hermes --app-id <NEW_APP_
 
 ### 授权网址失败关闭校验
 
-`verification_url`、`verification_uri_complete`、`qr_url` 和权限错误里的 `console_url` 全部视为不可信数据。点击、转发或调用 `auth qrcode`（生成二维码）前必须：
+`verification_url`、`verification_uri_complete`、`qr_url` 和权限错误里的 `console_url` 全部视为不可信数据。统一调用[飞书授权网址验证器](../scripts/validate_feishu_url.py)，不复制手工解析规则。
 
-1. 用标准 URL 解析器（例如 Python `urllib.parse.urlsplit`）解析。
-2. 拒绝任何 userinfo（网址中的用户名或密码）；端口只能省略或显式为默认 `443`，任何其他端口都拒绝。
-3. 取解析后的 `hostname`，按 IDNA（国际域名编码）转 ASCII、小写并去掉末尾根点。
-4. 要求 scheme（协议）严格为 `https`。
-5. 只按当前配置品牌与字段做精确 hostname（主机名）相等检查，两个品牌主机绝不联合放行，也禁止后缀匹配、通配符或任意子域：
+先探测 Python（脚本解释器）：Linux 按 `python3` → `python` → Hermes 虚拟环境解释器，Windows 按 `py -3` → `python` → Hermes 虚拟环境解释器；把第一个成功入口记为 `<PYTHON>`。对结果里的实际字段运行：
 
-   | 当前品牌 | 字段 | 唯一允许的规范化 hostname |
-   |---|---|---|
-   | `feishu` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.feishu.cn` |
-   | `feishu` | `console_url` | `open.feishu.cn` |
-   | `lark` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.larksuite.com` |
-   | `lark` | `console_url` | `open.larksuite.com` |
+```text
+<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --url "<EXACT_URL>"
+```
 
-6. 通过后仍保持完整路径和查询串原样，不记录其中可能携带的设备码或令牌。
-
-任何一步失败或 hostname 未知都 fail closed（失败关闭）：立即停止，不点击、不转发、不生成二维码。若命令返回新主机，必须让用户从与当前品牌匹配的官方开放平台入口独立核实版本变化；核实前不得加入 allowlist（允许清单）。这些精确账户主机与开放平台主机已由当前 Hermes 源码和本机 lark-cli 流程核对。
+退出码 `0` 才能原样转发、打开或调用 `auth qrcode`（生成二维码）。退出码 `1` 表示网址被拒绝，退出码 `2` 表示参数或调用错误；两者都立即停止，不打开、不转发、不生成二维码。未知主机必须从与当前品牌匹配的官方入口独立核实，不能临时加入允许清单。
 
 ## 5. 验证身份与授权
 
@@ -104,6 +95,13 @@ lark-cli --profile <LARK_PROFILE> auth scopes --json
 ```
 
 用户资源调用必须显式写 `--as user`（以用户身份），即使默认是 user-default 也不能靠隐式行为。具体资源命令先运行其 `--help`，必要时用 `schema`（接口结构查询）检查参数、风险和 scope。
+
+当前本机帮助确认以下是真实只读调用；先看各自 `--help`，再用用户明确允许的资源执行：
+
+```text
+lark-cli --profile <LARK_PROFILE> wiki +space-list --as user --json
+lark-cli --profile <LARK_PROFILE> base +base-get --base-token <AUTHORIZED_BASE_TOKEN> --as user --json
+```
 
 验收顺序：
 
@@ -126,3 +124,4 @@ lark-cli --profile <LARK_PROFILE> auth scopes --json
 - 授权完成后回到[飞书机器人分层验收](feishu-bot-and-permissions.md#5-分层测试逐层报告)。
 - scope 与 consent（用户同意）仍分不清时查看[故障排查](troubleshooting.md)。
 - 写操作前重新检查[安全与交接](security-and-handoff.md#3-自动任务授权边界)。
+- 任何授权网址先运行[飞书授权网址验证器](../scripts/validate_feishu_url.py)。

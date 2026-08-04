@@ -52,7 +52,8 @@ SECRET_NAME = (
     r"PRIVATE_KEY|PASSWORD|TOKEN|SECRET)"
 )
 SECRET_ASSIGNMENT = re.compile(
-    rf"(?im)^\s*(?:export\s+)?(?P<name>{SECRET_NAME})\s*(?:=|:)\s*(?P<value>[^#\r\n]+?)\s*$"
+    rf'''(?im)(?<![A-Za-z0-9_])["']?(?P<name>{SECRET_NAME})["']?\s*'''
+    rf'''(?:=|:)\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;#\r\n]+)'''
 )
 BEARER_TOKEN = re.compile(
     r"(?i)\bbearer[ \t]+(?P<value>[A-Za-z0-9._~+/=-]{12,})"
@@ -183,6 +184,37 @@ class SecretScannerTests(unittest.TestCase):
 
         self.assertEqual([], find_likely_secrets(text))
 
+    def test_flags_json_and_inline_secret_assignments(self) -> None:
+        json_access_field = "access_" + "token"
+        json_client_field = "client_" + "secret"
+        inline_app_field = "APP_" + "SECRET"
+        text = "\n".join(
+            (
+                f'{{"{json_access_field}": "json-live-access-345"}}',
+                f'{{"{json_client_field}": "json-live-client-678"}}',
+                f"note {inline_app_field}=inline-live-app-901",
+            )
+        )
+
+        self.assertCountEqual(
+            [json_access_field, json_client_field, inline_app_field],
+            find_likely_secrets(text),
+        )
+
+    def test_ignores_json_and_inline_placeholders(self) -> None:
+        json_access_field = "access_" + "token"
+        json_client_field = "client_" + "secret"
+        inline_app_field = "APP_" + "SECRET"
+        text = "\n".join(
+            (
+                f'{{"{json_access_field}": "<ACCESS_TOKEN>"}}',
+                f'{{"{json_client_field}": "${{{json_client_field}}}"}}',
+                f"note {inline_app_field}=dummy-inline-secret",
+            )
+        )
+
+        self.assertEqual([], find_likely_secrets(text))
+
 
 class SkillPackageTests(unittest.TestCase):
     def test_required_references_are_nonempty_and_cover_key_topics(self) -> None:
@@ -214,6 +246,19 @@ class SkillPackageTests(unittest.TestCase):
         self.assertIn(full_stage, profile)
         self.assertLess(profile.index(model_stage), profile.index(full_stage))
         self.assertIn("省略 `--stage` 默认也是 `full`", profile)
+        for marker in (
+            "<PYTHON>",
+            "python3",
+            "py -3",
+            "<HERMES_VENV>/bin/python",
+            "<HERMES_VENV>\\Scripts\\python.exe",
+            "SOUL.md",
+            "AGENTS.md",
+            "README.md",
+            "PROJECT.md",
+            "FEISHU_ALLOWED_USERS` 非空",
+        ):
+            self.assertIn(marker, profile)
 
         feishu = texts["feishu-bot-and-permissions.md"]
         for marker in ("im.message.receive_v1", "im:message:send_as_bot", "tmux", "screen"):
@@ -224,6 +269,26 @@ class SkillPackageTests(unittest.TestCase):
         for marker in ("--scope", "wiki:wiki:readonly", "bitable:app:readonly"):
             self.assertIn(marker, user_auth)
         self.assertIn("不能把 `--domain` 标成只读", user_auth)
+        for marker in (
+            "不要求先运行 `schema`",
+            "lark-cli schema --help",
+            "不能阻断上述已知精确 scope 流程",
+            "wiki +space-list --as user --json",
+            "base +base-get --base-token <AUTHORIZED_BASE_TOKEN> --as user --json",
+        ):
+            self.assertIn(marker, user_auth)
+
+        for marker in (
+            "FEISHU_ALLOWED_USERS` 必须是非空",
+            "Only allow listed user IDs",
+            "FEISHU_ALLOW_ALL_USERS=false",
+            "配对当作临时、受控引导",
+            "不得以空白名单完成验收或交接",
+            "gateway restart",
+            "../scripts/validate_agent_profile.py --stage full <PROFILE_DIR>",
+            "完整阶段退出 `0`",
+        ):
+            self.assertIn(marker, feishu)
 
         troubleshooting = texts["troubleshooting.md"]
         authorization_refs = {
@@ -234,35 +299,24 @@ class SkillPackageTests(unittest.TestCase):
         for filename, text in authorization_refs.items():
             with self.subTest(url_contract=filename):
                 for marker in (
-                    "urlsplit",
-                    "https",
+                    "../scripts/validate_feishu_url.py",
+                    "<PYTHON>",
+                    "python3",
+                    "py -3",
+                    "--brand <feishu|lark>",
+                    "--field <qr_url|verification_url|verification_uri_complete|console_url>",
+                    '--url "<EXACT_URL>"',
                     "verification_uri_complete",
-                    "userinfo",
-                    "`443`",
-                    "任何其他端口都拒绝",
-                    "accounts.feishu.cn",
-                    "accounts.larksuite.com",
-                    "open.feishu.cn",
-                    "open.larksuite.com",
                     "当前品牌",
-                    "精确",
-                    "绝不联合放行",
-                    "失败关闭",
                     "不可信数据",
-                    "hostname 未知",
-                    "立即停止",
+                    "退出码 `0`",
+                    "退出码 `1`",
+                    "退出码 `2`",
                     "独立核实",
                     "不转发",
                     "不生成二维码",
                 ):
                     self.assertIn(marker, text)
-                for mapping in (
-                    "`feishu` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.feishu.cn`",
-                    "`feishu` | `console_url` | `open.feishu.cn`",
-                    "`lark` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.larksuite.com`",
-                    "`lark` | `console_url` | `open.larksuite.com`",
-                ):
-                    self.assertIn(mapping, text)
 
         self.assertNotIn("后台运行时同时重定向", troubleshooting)
         for marker in ("tmux", "screen", "保持标准输入", "非交互子命令", "不能套用到交互式 `gateway setup`"):

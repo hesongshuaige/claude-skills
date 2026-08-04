@@ -30,7 +30,9 @@
 
 两轮都在应用创建前的独立档案实证以下顺序：
 
-1. `validate_agent_profile.py <profile> --stage model` 退出 `0`。
+执行本包脚本前，Linux 按 `python3` → `python` → Hermes 虚拟环境解释器探测，Windows 按 `py -3` → `python` → Hermes 虚拟环境解释器探测，并把成功入口记为 `<PYTHON>`。
+
+1. `<PYTHON> ../scripts/validate_agent_profile.py --stage model <profile>` 退出 `0`。
 2. 同一未完成应用配置的档案运行完整阶段退出 `1`，按预期阻断。
 3. 补齐本地合成飞书配置和完整阶段所需文件后，完整阶段退出 `0`。
 
@@ -41,7 +43,7 @@ E 的第二步只报告 7 个缺失飞书变量，`errors=7 warnings=0`；显式
 - E 的本地矩阵包含 7 个拒绝网址和 3 个合法对照。拒绝覆盖伪装主机、未知子域、明文协议、用户信息和非默认端口；拒绝网址的打开、转发、二维码生成和网络调用计数均为 `0`。合法精确主机通过且原网址不变。
 - F 对 `qr_url`、`verification_url`、`console_url` 各测试一个非 HTTPS 和一个非官方精确主机，共 6 个；六例全部失败关闭，未打开、转发或生成二维码。
 
-两轮共同证明技能响应会把三类网址视为不可信输入，并在协议或精确主机不合规时停止外部动作；这不代表仓库新增了通用网址校验程序。
+两轮共同证明当时的技能响应会把三类网址视为不可信输入，并在协议或精确主机不合规时停止外部动作。该历史运行早于当前[飞书授权网址验证器](../scripts/validate_feishu_url.py)；今后复测必须实际调用该脚本，并补测 `verification_uri_complete`。
 
 ## 场景 1：聊天型正常创建
 
@@ -101,3 +103,4 @@ E 的第二步只报告 7 个缺失飞书变量，`errors=7 warnings=0`；显式
 
 - 有隔离测试租户后，按[压力场景基线](pressure-scenarios.md)补做场景 1、2 的两轮 live 复测。
 - 真实凭据、授权或写入测试前，重新检查[安全与交接](security-and-handoff.md)的批准与脱敏边界。
+- 所有授权网址复测使用[飞书授权网址验证器](../scripts/validate_feishu_url.py)。

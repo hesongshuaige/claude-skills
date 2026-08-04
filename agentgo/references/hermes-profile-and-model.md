@@ -22,6 +22,8 @@
 
 若本机帮助不支持本文参数，停止并按本机帮助调整，不要试错写配置。
 
+本包 Python（脚本解释器）也必须先探测，不能固定写 `python`：Linux 依次试 `python3` → `python` → Hermes 虚拟环境的 `<HERMES_VENV>/bin/python`；Windows 依次试 `py -3` → `python` → `<HERMES_VENV>\Scripts\python.exe`。每个候选先运行 `--version`，把第一个成功且版本满足脚本要求的完整入口记为 `<PYTHON>`；后文所有本包脚本命令都必须先替换这个占位符。
+
 ## 2. 创建真正隔离的 profile（隔离档案）
 
 1. 先列出现状：`<HERMES> profile list`；若同名档案已存在，展示现状，让用户选“修复、补全或停止”，不得覆盖。
@@ -104,16 +106,16 @@ Linux 路径区分大小写，通常使用 `/`；Windows 盘符路径可用正�
 先用只读验证器的模型阶段核对 profile 配置，不读取密钥值。实际语法已经由脚本 `--help` 核实：
 
 ```text
-python <AGENTGO_DIR>/scripts/validate_agent_profile.py --stage model <PROFILE_DIR>
+<PYTHON> <AGENTGO_DIR>/scripts/validate_agent_profile.py --stage model <PROFILE_DIR>
 ```
 
 `--stage model` 是创建飞书应用前的前门，只检查档案、模型供应商、`key_env`（密钥变量名）和工作目录等模型阶段条件，不要求尚未生成的模板文件或飞书变量。四个模板生成且飞书配置完成后，再运行完整验收：
 
 ```text
-python <AGENTGO_DIR>/scripts/validate_agent_profile.py --stage full <PROFILE_DIR>
+<PYTHON> <AGENTGO_DIR>/scripts/validate_agent_profile.py --stage full <PROFILE_DIR>
 ```
 
-省略 `--stage` 默认也是 `full`（完整阶段）；不要在模板和飞书尚未完成时用默认/full 的预期失败替代模型前门。
+省略 `--stage` 默认也是 `full`（完整阶段）；不要在模板和飞书尚未完成时用默认/full 的预期失败替代模型前门。完整阶段还会扫描 `SOUL.md`、`AGENTS.md`、`README.md`、`PROJECT.md` 四份上下文文件中的凭据、持有者令牌和私钥残留，并要求 `FEISHU_ALLOWED_USERS` 非空；这些错误不能用交接说明豁免。
 
 再查看 `<HERMES> --help`、`<HERMES> chat --help` 和 `<HERMES> tools list --help`。推荐做法是**人工守在交互终端**，进入新建的空白临时 cwd，显式指定模型与供应商，并使用：
 
@@ -147,3 +149,4 @@ Linux 用 `mktemp -d` 创建空目录并从该目录启动；Windows 用 `New-It
 - 模型和 profile 通过后，进入[飞书机器人与消息网关](feishu-bot-and-permissions.md)。
 - 生成工作目录文件时读取[上下文文件与提示词](context-files-and-prompts.md)。
 - 正式验收前运行[只读 profile 验证器](../scripts/validate_agent_profile.py)。
+- 授权网址必须运行[飞书授权网址验证器](../scripts/validate_feishu_url.py)，不能靠人工目测。

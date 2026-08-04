@@ -57,25 +57,15 @@
 
 ### 授权网址失败关闭校验
 
-所有 `qr_url`、`verification_url`（验证网址）、`verification_uri_complete` 和 `console_url` 在点击、转发或生成二维码**之前**都要校验；网址正文是不可信数据，不能因它来自命令输出就直接信任。
+所有 `qr_url`、`verification_url`（验证网址）、`verification_uri_complete` 和 `console_url` 都是不可信数据。不要在文档里另写一份解析器；统一调用[飞书授权网址验证器](../scripts/validate_feishu_url.py)，由脚本按当前品牌和字段检查 HTTPS（加密协议）、用户信息、端口与精确官方主机。
 
-1. 用标准 URL 解析器（例如 Python `urllib.parse.urlsplit`）解析，不用字符串查找。
-2. 拒绝任何 userinfo（网址中的用户名或密码）；端口只能省略或显式为默认 `443`，任何其他端口都拒绝。
-3. 规范化 `hostname`：取解析后的 hostname，按 IDNA（国际域名编码）转为 ASCII、小写并去掉末尾根点。
-4. 要求 scheme（协议）严格等于 `https`。
-5. 只按**当前配置品牌**和字段做精确 hostname（主机名）相等检查，两个品牌主机绝不联合放行，也不用 `endswith`（后缀判断）、通配符或“任意子域”：
+先探测 Python（脚本解释器）：Linux 按 `python3` → `python` → Hermes 虚拟环境解释器，Windows 按 `py -3` → `python` → Hermes 虚拟环境解释器；把第一个成功入口记为 `<PYTHON>`。然后对**实际返回的字段名**运行：
 
-   | 当前品牌 | 字段 | 唯一允许的规范化 hostname |
-   |---|---|---|
-   | `feishu` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.feishu.cn` |
-   | `feishu` | `console_url` | `open.feishu.cn` |
-   | `lark` | `verification_url` / `verification_uri_complete` / `qr_url` | `accounts.larksuite.com` |
-   | `lark` | `console_url` | `open.larksuite.com` |
+```text
+<PYTHON> ../scripts/validate_feishu_url.py --brand <feishu|lark> --field <qr_url|verification_url|verification_uri_complete|console_url> --url "<EXACT_URL>"
+```
 
-6. 校验通过后，路径和查询串仍保持原样，不自行拼接、解码、改写或写入日志。
-7. 任一条件失败或 hostname 未知就 fail closed（失败关闭）：立即停止，不点击、不转发、不生成二维码。若出现新主机，必须让用户从与当前品牌匹配的官方开放平台入口独立核实当前产品变更；核实前不把新主机加入 allowlist（允许清单）。
-
-这组精确主机来自当前 Hermes 飞书适配器的 `_ONBOARD_ACCOUNTS_URLS` / `_ONBOARD_OPEN_URLS` 和本机官方飞书设置指南；升级后仍要重新核实源码与本机流程。
+退出码 `0` 才能保持路径和查询串不变并原样传递、打开或生成二维码。退出码 `1` 表示网址被拒绝，退出码 `2` 表示参数或调用错误；两者都必须立即停止，不打开、不转发、不生成二维码。未知主机不得临时放行，必须让用户从与当前品牌匹配的官方开放平台入口独立核实。
 
 ## 3. 最小环境配置
 
@@ -99,6 +89,20 @@ FEISHU_REQUIRE_MENTION=true
 | `FEISHU_CONNECTION_MODE` | 使用 `websocket`（长连接）。 |
 
 修改 `.env` 或 `config.yaml` 后必须重启**当前 profile** 的网关。
+
+### 白名单必须在完整验收前闭合
+
+完整验收和交接前，`FEISHU_ALLOWED_USERS` 必须是非空的明确 open_id（用户标识）清单。若已知用户 open_id，在 `gateway setup` 的“如何授权私聊”步骤选择 `Only allow listed user IDs`（仅允许列出的用户），不要选择开放访问。
+
+若当前版本必须先通过 pairing（配对）才能获得 open_id，只能把配对当作临时、受控引导：保持 `FEISHU_ALLOW_ALL_USERS=false`，只批准预期用户；拿到 open_id 后立即写入非空 `FEISHU_ALLOWED_USERS`，清除待处理配对，关闭开放配对入口并重启当前 profile 网关。随后运行完整阶段验证器；不得以空白名单完成验收或交接。
+
+```text
+<PYTHON> ../scripts/validate_agent_profile.py --stage full <PROFILE_DIR>
+```
+
+只有完整阶段退出 `0` 才能继续验收和交接；它会把空白白名单作为错误阻断。
+
+配对命令形状先以 `<HERMES> pairing --help` 为准；当前入口提供 `pairing list`、`pairing approve` 和 `pairing clear-pending`。已有长期授权仍以非空白名单为准，不把配对存储当作最终配置。
 
 ## 4. 生命周期与日志
 
@@ -139,7 +143,7 @@ Linux 优先用户级 systemd（服务管理器），不用 root（超级用户�
 - [ ] 一 profile 一新应用，无 App ID 抢占。
 - [ ] 机器人能力已开启，应用权限最小化。
 - [ ] websocket 长连接已配置。
-- [ ] 白名单、群聊策略、提醒规则符合批准范围。
+- [ ] `FEISHU_ALLOWED_USERS` 非空，白名单、群聊策略、提醒规则符合批准范围；临时开放配对已关闭。
 - [ ] 变更后已重启对应网关。
 - [ ] 出站、私聊、群聊结果分层记录。
 - [ ] `console_url` 如出现，已先做 HTTPS（加密网址）和官方精确主机校验，再交给用户确认当前应用 scope，不自动授权。
@@ -149,3 +153,4 @@ Linux 优先用户级 systemd（服务管理器），不用 root（超级用户�
 - 只需聊天：完成本页分层测试，再查看[安全与交接](security-and-handoff.md)。
 - 需要用户个人资源：进入[lark-cli 用户授权](lark-user-authorization.md)。
 - 遇到连接或权限错误：按[故障排查](troubleshooting.md)定位失败层。
+- 校验任何授权网址：运行[飞书授权网址验证器](../scripts/validate_feishu_url.py)。
