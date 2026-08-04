@@ -605,6 +605,10 @@ def _sensitive_context_findings(path: Path) -> list[Finding]:
     categories: set[str] = set()
     for match in _CONTEXT_CREDENTIAL.finditer(content):
         value = match.group("value")
+        if match.group("operator") == "=" and not match.group("quote"):
+            value = value.split("#", 1)[0].strip()
+            if value:
+                value = value.split(None, 1)[0]
         if not _has_context_value(value):
             continue
         if match.group("operator") == ":" and not match.group("quote"):

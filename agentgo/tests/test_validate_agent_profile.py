@@ -402,6 +402,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
         cases = (
             ("TOKEN=abc123\n", "abc123"),
             ("ACCESS_TOKEN=abc+/def==\n", "abc+/def=="),
+            ("TOKEN=abc123 # documentation comment\n", "abc123"),
         )
         path = self.profile / "SOUL.md"
         for content, value in cases:
