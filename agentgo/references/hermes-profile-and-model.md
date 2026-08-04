@@ -101,11 +101,19 @@ Linux 路径区分大小写，通常使用 `/`；Windows 盘符路径可用正�
 
 > **醒目警告：`-z` / `--oneshot`（一次性执行）会自动绕过命令审批。** 当前 Hermes 帮助和 `hermes_cli/oneshot.py`（一次性执行源码）还确认：普通 `-z` 会照常加载当前目录规则、身份、记忆、技能和工具。因此绝不能在普通 profile、业务 workspace 或含不可信规则的 cwd 中把裸 `-z` 称为“安全测试”。
 
-先用只读验证器核对 profile 配置，不读取密钥值：
+先用只读验证器的模型阶段核对 profile 配置，不读取密钥值。实际语法已经由脚本 `--help` 核实：
 
 ```text
-python <AGENTGO_DIR>/scripts/validate_agent_profile.py <PROFILE_DIR>
+python <AGENTGO_DIR>/scripts/validate_agent_profile.py --stage model <PROFILE_DIR>
 ```
+
+`--stage model` 是创建飞书应用前的前门，只检查档案、模型供应商、`key_env`（密钥变量名）和工作目录等模型阶段条件，不要求尚未生成的模板文件或飞书变量。四个模板生成且飞书配置完成后，再运行完整验收：
+
+```text
+python <AGENTGO_DIR>/scripts/validate_agent_profile.py --stage full <PROFILE_DIR>
+```
+
+省略 `--stage` 默认也是 `full`（完整阶段）；不要在模板和飞书尚未完成时用默认/full 的预期失败替代模型前门。
 
 再查看 `<HERMES> --help`、`<HERMES> chat --help` 和 `<HERMES> tools list --help`。推荐做法是**人工守在交互终端**，进入新建的空白临时 cwd，显式指定模型与供应商，并使用：
 

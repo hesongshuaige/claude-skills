@@ -46,9 +46,19 @@ ALL_PLACEHOLDERS = {
     "{{PERMISSION_BOUNDARIES}}",
     "{{VERIFICATION_RULES}}",
 }
-SECRET_NAME = r"(?:[A-Z][A-Z0-9_]*_)?(?:API_KEY|APP_SECRET|PASSWORD)"
+SECRET_NAME = (
+    r"(?:[A-Z][A-Z0-9_]*_)?"
+    r"(?:API_KEY|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|APP_SECRET|"
+    r"PRIVATE_KEY|PASSWORD|TOKEN|SECRET)"
+)
 SECRET_ASSIGNMENT = re.compile(
     rf"(?im)^\s*(?:export\s+)?(?P<name>{SECRET_NAME})\s*(?:=|:)\s*(?P<value>[^#\r\n]+?)\s*$"
+)
+BEARER_TOKEN = re.compile(
+    r"(?i)\bbearer[ \t]+(?P<value>[A-Za-z0-9._~+/=-]{12,})"
+)
+PRIVATE_KEY_PEM = re.compile(
+    r"-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----"
 )
 FEISHU_IDENTIFIER = re.compile(
     r"(?<![A-Za-z0-9])(?:cli|ou)_[A-Za-z0-9]{16,}(?![A-Za-z0-9])"
@@ -91,6 +101,11 @@ def find_likely_secrets(text: str) -> list[str]:
     for match in FEISHU_IDENTIFIER.finditer(text):
         if not is_placeholder_value(match.group(0)):
             findings.append("FEISHU_IDENTIFIER")
+    for match in BEARER_TOKEN.finditer(text):
+        if not is_placeholder_value(match.group("value")):
+            findings.append("BEARER_TOKEN")
+    if PRIVATE_KEY_PEM.search(text):
+        findings.append("PRIVATE_KEY_PEM")
     return findings
 
 
@@ -100,19 +115,46 @@ class SecretScannerTests(unittest.TestCase):
         app_field = "APP_" + "SECRET"
         credential_field = "PASS" + "WORD"
         vendor_field = "VENDOR_" + key_field
+        access_field = "ACCESS_" + "TOKEN"
+        refresh_field = "REFRESH_" + "TOKEN"
+        client_field = "CLIENT_" + "SECRET"
+        service_token_field = "SERVICE_" + "TOKEN"
+        service_secret_field = "SERVICE_" + "SECRET"
         identifier = "cli_" + "a1b2c3d4e5f6g7h8"
+        pem_header = "-----BEGIN " + "PRIVATE KEY-----"
+        bearer = "Bearer " + "eyJhbGciOiJIUzI1Ni.live.signature"
         text = "\n".join(
             (
                 f"{key_field}=sk-live-value-123",
                 f"export {app_field}=live-app-value-456",
                 f'{credential_field}: "live-password-789"',
                 f"{vendor_field}: live-vendor-value-012",
+                f"{access_field}=live-access-value-345",
+                f"{refresh_field}=live-refresh-value-678",
+                f"{client_field}=live-client-value-901",
+                f"{service_token_field}=live-service-token-234",
+                f"{service_secret_field}=live-service-secret-567",
                 identifier,
+                pem_header,
+                bearer,
             )
         )
 
         self.assertCountEqual(
-            [key_field, app_field, credential_field, vendor_field, "FEISHU_IDENTIFIER"],
+            [
+                key_field,
+                app_field,
+                credential_field,
+                vendor_field,
+                access_field,
+                refresh_field,
+                client_field,
+                service_token_field,
+                service_secret_field,
+                "FEISHU_IDENTIFIER",
+                "PRIVATE_KEY_PEM",
+                "BEARER_TOKEN",
+            ],
             find_likely_secrets(text),
         )
 
@@ -120,6 +162,8 @@ class SecretScannerTests(unittest.TestCase):
         key_field = "API" + "_KEY"
         app_field = "APP_" + "SECRET"
         credential_field = "PASS" + "WORD"
+        access_field = "ACCESS_" + "TOKEN"
+        client_field = "CLIENT_" + "SECRET"
         text = "\n".join(
             (
                 f"{key_field}=<your-key>",
@@ -128,6 +172,10 @@ class SecretScannerTests(unittest.TestCase):
                 f"SERVICE_{key_field}=changeme",
                 f"SECONDARY_{key_field}=placeholder",
                 f"THIRD_{key_field}=" + "${" + key_field + "}",
+                f"{access_field}=dummy-token",
+                f"{client_field}=" + "${" + client_field + "}",
+                "Bearer changeme-placeholder",
+                "PRIVATE_KEY=<PRIVATE_KEY_PEM>",
                 "FEISHU_APP_ID=cli_" + "0" * 20,
                 "ou_" + "0" * 20,
             )
@@ -160,6 +208,12 @@ class SkillPackageTests(unittest.TestCase):
         profile = texts["hermes-profile-and-model.md"]
         for marker in ("自动绕过", "--safe-mode", "--toolsets safe", "空白临时 cwd"):
             self.assertIn(marker, profile)
+        model_stage = "--stage model <PROFILE_DIR>"
+        full_stage = "--stage full <PROFILE_DIR>"
+        self.assertIn(model_stage, profile)
+        self.assertIn(full_stage, profile)
+        self.assertLess(profile.index(model_stage), profile.index(full_stage))
+        self.assertIn("省略 `--stage` 默认也是 `full`", profile)
 
         feishu = texts["feishu-bot-and-permissions.md"]
         for marker in ("im.message.receive_v1", "im:message:send_as_bot", "tmux", "screen"):
@@ -170,6 +224,27 @@ class SkillPackageTests(unittest.TestCase):
         for marker in ("--scope", "wiki:wiki:readonly", "bitable:app:readonly"):
             self.assertIn(marker, user_auth)
         self.assertIn("不能把 `--domain` 标成只读", user_auth)
+
+        for text in (feishu, user_auth):
+            with self.subTest(url_contract=text[:40]):
+                for marker in (
+                    "urlsplit",
+                    "https",
+                    "accounts.feishu.cn",
+                    "accounts.larksuite.com",
+                    "open.feishu.cn",
+                    "open.larksuite.com",
+                    "精确",
+                    "失败关闭",
+                    "不可信数据",
+                    "不点击、不转发、不生成二维码",
+                ):
+                    self.assertIn(marker, text)
+
+        troubleshooting = texts["troubleshooting.md"]
+        self.assertNotIn("后台运行时同时重定向", troubleshooting)
+        for marker in ("tmux", "screen", "保持标准输入", "非交互子命令", "不能套用到交互式 `gateway setup`"):
+            self.assertIn(marker, troubleshooting)
 
         context = texts["context-files-and-prompts.md"]
         for marker in ("动态", "20,000", "保守下限", "只放在 profile 根目录"):
@@ -363,19 +438,20 @@ class SkillPackageTests(unittest.TestCase):
 
     def test_package_contains_no_likely_real_secrets(self) -> None:
         offenders = []
-        for path in self._package_text_files():
+        for path in self._package_text_files(exclude_tests=True):
             if find_likely_secrets(path.read_text(encoding="utf-8")):
                 offenders.append(path.relative_to(PACKAGE_ROOT).as_posix())
 
         self.assertEqual([], offenders)
 
     @staticmethod
-    def _package_text_files() -> list[Path]:
+    def _package_text_files(*, exclude_tests: bool = False) -> list[Path]:
         return sorted(
             path
             for path in PACKAGE_ROOT.rglob("*")
             if path.is_file()
             and path.suffix.lower() in {".md", ".py", ".yaml", ".yml", ".template"}
+            and not (exclude_tests and "tests" in path.relative_to(PACKAGE_ROOT).parts)
         )
 
 
