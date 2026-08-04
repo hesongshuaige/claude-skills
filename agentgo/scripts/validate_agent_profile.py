@@ -157,7 +157,9 @@ def _split_flow_items(value: str) -> list[str]:
     return items
 
 
-def _split_mapping_entry(value: str) -> tuple[str, str] | None:
+def _split_mapping_entry(
+    value: str, *, allow_compact: bool = False
+) -> tuple[str, str] | None:
     quote: str | None = None
     escaped = False
     depth = 0
@@ -181,7 +183,9 @@ def _split_mapping_entry(value: str) -> tuple[str, str] | None:
         elif character in "]}":
             depth -= 1
         elif character == ":" and depth == 0 and (
-            index + 1 == len(value) or value[index + 1].isspace()
+            allow_compact
+            or index + 1 == len(value)
+            or value[index + 1].isspace()
         ):
             return value[:index].strip(), value[index + 1 :].strip()
     return None
@@ -200,7 +204,7 @@ def _parse_flow_collection(value: str) -> Any:
         return [_parse_scalar(part) for part in parts]
     mapping: dict[str, Any] = {}
     for part in parts:
-        entry = _split_mapping_entry(part)
+        entry = _split_mapping_entry(part, allow_compact=True)
         if entry is None:
             raise ValueError("flow mapping entry must contain a colon")
         raw_key, raw_value = entry
@@ -247,7 +251,15 @@ def parse_simple_yaml(path: Path | str) -> dict:
             if is_list:
                 raw_item = content[1:].strip()
                 if not raw_item:
-                    raise ValueError(f"line {line_number}: list item must be a scalar")
+                    index += 1
+                    if index >= len(tokens) or tokens[index][0] <= block_indent:
+                        raise ValueError(
+                            f"line {line_number}: empty list item must have nested content"
+                        )
+                    child_indent = tokens[index][0]
+                    nested_item, index = parse_block(index, child_indent)
+                    container.append(nested_item)
+                    continue
                 mapping_entry = _split_mapping_entry(raw_item)
                 index += 1
                 if mapping_entry is None:
@@ -258,8 +270,11 @@ def parse_simple_yaml(path: Path | str) -> dict:
                         )
                     continue
 
-                key, raw_value = mapping_entry
-                if not _YAML_KEY.fullmatch(key):
+                raw_key, raw_value = mapping_entry
+                key = _parse_scalar(raw_key)
+                if not isinstance(key, str) or not key or (
+                    raw_key[0] not in "'\"" and not _YAML_KEY.fullmatch(key)
+                ):
                     raise ValueError(f"line {line_number}: invalid list mapping key")
                 item: dict[str, Any] = {}
                 mapping_indent = block_indent + 2
@@ -408,7 +423,11 @@ def _is_obvious_placeholder(value: str) -> bool:
     return bool(compact) and set(compact) == {"0"}
 
 
-def validate_profile(profile: Path | str, stage: str = "full") -> list[Finding]:
+def validate_profile(
+    profile: Path | str,
+    stage: str = "full",
+    runtime_cwd: Path | str | None = None,
+) -> list[Finding]:
     """Inspect a profile without changing it or contacting external services."""
     profile_path = Path(profile).expanduser()
     findings: list[Finding] = []
@@ -564,7 +583,7 @@ def validate_profile(profile: Path | str, stage: str = "full") -> list[Finding]:
                         findings.append(Finding("ERROR", "PROVIDER_KEY_ENV_MISSING", f"providers.{provider_name}.key_env is required"))
                     elif not env_values.get(key_env.strip(), "").strip():
                         findings.append(Finding("ERROR", "PROVIDER_KEY_MISSING", f".env model key variable is missing or empty: {key_env}"))
-                    elif stage == "full" and _is_obvious_placeholder(env_values[key_env.strip()]):
+                    elif _is_obvious_placeholder(env_values[key_env.strip()]):
                         findings.append(Finding("ERROR", "PROVIDER_KEY_PLACEHOLDER", f".env model key variable contains an obvious placeholder: {key_env}"))
 
                 if provider_reference.startswith("custom:"):
@@ -594,6 +613,13 @@ def validate_profile(profile: Path | str, stage: str = "full") -> list[Finding]:
 
         terminal = _get_mapping(config, "terminal")
         cwd_value = terminal.get("cwd") if terminal else None
+
+        def check_workspace_context(workspace_path: Path) -> None:
+            for filename in _CONTEXT_FILES:
+                finding = _context_finding(workspace_path / filename)
+                if finding:
+                    findings.append(finding)
+
         if not isinstance(cwd_value, str) or not cwd_value:
             findings.append(Finding("ERROR", "WORKSPACE_MISSING", "terminal.cwd must point to the workspace"))
         else:
@@ -605,27 +631,53 @@ def validate_profile(profile: Path | str, stage: str = "full") -> list[Finding]:
             )
             is_posix_absolute = cwd_value.startswith("/")
             if cwd_value in {"auto", "cwd", "."}:
-                findings.append(
-                    Finding(
-                        "WARN",
-                        "WORKSPACE_UNVERIFIED",
-                        f"terminal.cwd uses runtime placeholder {cwd_value}; static validation cannot confirm workspace context",
+                if stage == "model":
+                    findings.append(
+                        Finding(
+                            "WARN",
+                            "WORKSPACE_UNVERIFIED",
+                            f"terminal.cwd uses runtime placeholder {cwd_value}; static validation cannot confirm workspace context",
+                        )
                     )
-                )
+                elif runtime_cwd is None:
+                    findings.append(
+                        Finding(
+                            "ERROR",
+                            "WORKSPACE_UNRESOLVED",
+                            "terminal.cwd is a runtime placeholder; full validation requires --runtime-cwd",
+                        )
+                    )
+                else:
+                    runtime_workspace = Path(runtime_cwd).expanduser()
+                    if not runtime_workspace.is_absolute():
+                        findings.append(
+                            Finding(
+                                "ERROR",
+                                "WORKSPACE_UNRESOLVED",
+                                "--runtime-cwd must be an absolute path on this platform",
+                            )
+                        )
+                    elif not runtime_workspace.is_dir():
+                        findings.append(
+                            Finding(
+                                "ERROR",
+                                "WORKSPACE_MISSING",
+                                "--runtime-cwd directory does not exist",
+                            )
+                        )
+                    else:
+                        check_workspace_context(runtime_workspace)
             elif workspace.is_absolute():
                 if not workspace.is_dir():
                     findings.append(Finding("ERROR", "WORKSPACE_MISSING", f"terminal.cwd workspace does not exist: {workspace}"))
                 elif stage == "full":
-                    for filename in _CONTEXT_FILES:
-                        finding = _context_finding(workspace / filename)
-                        if finding:
-                            findings.append(finding)
+                    check_workspace_context(workspace)
             elif is_windows_absolute or is_posix_absolute:
                 findings.append(
                     Finding(
-                        "WARN",
-                        "WORKSPACE_UNVERIFIED",
-                        "terminal.cwd is absolute for another platform; static validation cannot confirm workspace context",
+                        "ERROR" if stage == "full" else "WARN",
+                        "WORKSPACE_UNRESOLVED" if stage == "full" else "WORKSPACE_UNVERIFIED",
+                        "terminal.cwd is absolute for another platform and cannot be checked on this host",
                     )
                 )
             else:
@@ -648,10 +700,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="full",
         help="model checks the pre-app model gate; full also checks Feishu and workspace readiness (default: full)",
     )
+    parser.add_argument(
+        "--runtime-cwd",
+        type=Path,
+        help="actual workspace path for full validation when terminal.cwd is auto, cwd, or .",
+    )
     parser.add_argument("profile", type=Path, help="path to the Hermes profile directory")
     try:
         arguments = parser.parse_args(argv)
-        findings = validate_profile(arguments.profile, stage=arguments.stage)
+        findings = validate_profile(
+            arguments.profile,
+            stage=arguments.stage,
+            runtime_cwd=arguments.runtime_cwd,
+        )
     except KeyboardInterrupt:
         print("[ERROR] INTERRUPTED: validation interrupted")
         return 130

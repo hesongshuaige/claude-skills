@@ -21,11 +21,15 @@ REQUIRED_FEISHU_ENV = {
 
 
 def run_validator(
-    profile: Path, stage: str | None = None
+    profile: Path,
+    stage: str | None = None,
+    runtime_cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, str(SCRIPT)]
     if stage is not None:
         command.extend(("--stage", stage))
+    if runtime_cwd is not None:
+        command.extend(("--runtime-cwd", str(runtime_cwd)))
     command.append(str(profile))
     try:
         return subprocess.run(
@@ -156,6 +160,25 @@ class ValidateAgentProfileTests(unittest.TestCase):
                 self.assertNotIn(placeholder, output)
         env_path.write_text(original, encoding="utf-8")
 
+    def test_model_stage_rejects_model_key_placeholders_without_echoing(self) -> None:
+        env_path = self.profile / ".env"
+        original = env_path.read_text(encoding="utf-8")
+        for placeholder in ("<model-key>", "changeme-model-key", "redacted-key"):
+            with self.subTest(placeholder=placeholder):
+                env_path.write_text(
+                    original.replace(
+                        "MINIMAX_M3_API_KEY=synthetic-model-key-3c8f2a",
+                        f"MINIMAX_M3_API_KEY={placeholder}",
+                    ),
+                    encoding="utf-8",
+                )
+                result = run_validator(self.profile, stage="model")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("MINIMAX_M3_API_KEY", output)
+                self.assertNotIn(placeholder, output)
+        env_path.write_text(original, encoding="utf-8")
+
     def test_approvals_off_fails_while_safe_modes_pass(self) -> None:
         config_path = self.profile / "config.yaml"
         original = config_path.read_text(encoding="utf-8")
@@ -212,11 +235,14 @@ class ValidateAgentProfileTests(unittest.TestCase):
         config_path = self.profile / "config.yaml"
         config_path.write_text(
             config_path.read_text(encoding="utf-8")
-            + "extra: [one, two]\n"
+            + 'extra: {"name":"first"}\n'
+            + "extra_list: [one, two]\n"
             + "unknown_section:\n"
             + "  - name: first\n"
             + "    enabled: true\n"
-            + "  - name: second\n"
+            + "  - \"name\": second\n"
+            + "  -\n"
+            + "    name: nested\n"
             + "  - metadata:\n"
             + "      owner: synthetic\n"
             + "    name: third\n",
@@ -399,7 +425,7 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("workspace", self._output(result).lower())
 
-    def test_runtime_cwd_placeholders_warn_without_failing(self) -> None:
+    def test_runtime_cwd_placeholders_warn_in_model_but_fail_unresolved_full(self) -> None:
         config_path = self.profile / "config.yaml"
         original = config_path.read_text(encoding="utf-8")
         for placeholder in ("auto", "cwd", "."):
@@ -408,12 +434,28 @@ class ValidateAgentProfileTests(unittest.TestCase):
                     original.replace(self.workspace.as_posix(), placeholder),
                     encoding="utf-8",
                 )
-                result = run_validator(self.profile)
-                output = self._output(result)
-                self.assertEqual(0, result.returncode, output)
-                self.assertIn("WARN", output.upper())
-                self.assertIn("static", output.lower())
+                model_result = run_validator(self.profile, stage="model")
+                full_result = run_validator(self.profile, stage="full")
+                self.assertEqual(
+                    0, model_result.returncode, self._output(model_result)
+                )
+                self.assertIn("WARN", self._output(model_result).upper())
+                self.assertNotEqual(0, full_result.returncode)
+                self.assertIn("WORKSPACE_UNRESOLVED", self._output(full_result))
         config_path.write_text(original, encoding="utf-8")
+
+    def test_runtime_cwd_resolves_placeholder_for_full_context_check(self) -> None:
+        config_path = self.profile / "config.yaml"
+        content = config_path.read_text(encoding="utf-8")
+        config_path.write_text(
+            content.replace(self.workspace.as_posix(), "cwd"), encoding="utf-8"
+        )
+
+        result = run_validator(
+            self.profile, stage="full", runtime_cwd=self.workspace
+        )
+
+        self.assertEqual(0, result.returncode, self._output(result))
 
     def test_uppercase_cwd_placeholders_are_invalid_relative_paths(self) -> None:
         config_path = self.profile / "config.yaml"
@@ -457,14 +499,15 @@ class ValidateAgentProfileTests(unittest.TestCase):
                 config_path.write_text(
                     original.replace(self.workspace.as_posix(), cwd), encoding="utf-8"
                 )
-                result = run_validator(self.profile)
-                output = self._output(result)
-                if native_format:
-                    self.assertNotEqual(0, result.returncode)
-                else:
-                    self.assertEqual(0, result.returncode, output)
-                    self.assertIn("WARN", output.upper())
-                self.assertNotIn("relative", output.lower())
+                full_result = run_validator(self.profile, stage="full")
+                full_output = self._output(full_result)
+                self.assertNotEqual(0, full_result.returncode)
+                self.assertNotIn("relative", full_output.lower())
+                if not native_format:
+                    model_result = run_validator(self.profile, stage="model")
+                    model_output = self._output(model_result)
+                    self.assertEqual(0, model_result.returncode, model_output)
+                    self.assertIn("WARN", model_output.upper())
         config_path.write_text(original, encoding="utf-8")
 
     def test_each_missing_context_file_fails(self) -> None:
