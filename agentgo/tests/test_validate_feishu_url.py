@@ -100,6 +100,63 @@ class ValidateFeishuUrlTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, self.output(result))
 
+    def test_rejects_leading_or_trailing_whitespace(self) -> None:
+        cases = (
+            " https://accounts.feishu.cn/path?code=leading-secret",
+            "https://accounts.feishu.cn/path?code=trailing-secret ",
+        )
+        for url in cases:
+            with self.subTest(url=repr(url)):
+                result = run_validator(url=url)
+                output = self.output(result)
+                self.assertEqual(1, result.returncode, output)
+                self.assertIn("whitespace", output.lower())
+                self.assertNotIn("secret", output)
+
+    def test_rejects_ascii_controls_and_unencoded_whitespace_anywhere(self) -> None:
+        cases = (
+            "https://accounts.feishu.cn/path\n?code=newline-secret",
+            "https://accounts.feishu.cn/pa\tth?code=tab-secret",
+            "https://accounts.feishu.cn/path\x01more?code=control-secret",
+            "https://accounts.feishu.cn/path with space?code=space-secret",
+        )
+        for url in cases:
+            with self.subTest(url=repr(url)):
+                result = run_validator(url=url)
+                output = self.output(result)
+                self.assertEqual(1, result.returncode, output)
+                self.assertNotIn("secret", output)
+
+    def test_rejects_backslash_anywhere(self) -> None:
+        result = run_validator(
+            url="https://accounts.feishu.cn/path\\segment?code=backslash-secret"
+        )
+
+        output = self.output(result)
+        self.assertEqual(1, result.returncode, output)
+        self.assertIn("backslash", output.lower())
+        self.assertNotIn("backslash-secret", output)
+
+    def test_rejects_empty_or_noncanonical_explicit_port_text(self) -> None:
+        cases = (
+            "https://accounts.feishu.cn:/path?code=empty-port-secret",
+            "https://accounts.feishu.cn:0443/path?code=padded-port-secret",
+            "https://accounts.feishu.cn:+443/path?code=signed-port-secret",
+        )
+        for url in cases:
+            with self.subTest(url=url):
+                result = run_validator(url=url)
+                output = self.output(result)
+                self.assertEqual(1, result.returncode, output)
+                self.assertIn("port", output.lower())
+                self.assertNotIn("secret", output)
+
+    def test_rejects_percent_encoded_hostname_confusable(self) -> None:
+        result = run_validator(url="https://accounts.feishu%2ecn/path")
+
+        self.assertEqual(1, result.returncode, self.output(result))
+        self.assertIn("host", self.output(result).lower())
+
     def test_rejects_trailing_dot_hostname(self) -> None:
         result = run_validator(url="https://accounts.feishu.cn./path")
 
