@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -20,23 +21,41 @@ HOSTS = {
 
 
 def run_validator(
-    *, brand: str = "feishu", field: str = "qr_url", url: str = ""
+    *,
+    brand: str = "feishu",
+    field: str = "qr_url",
+    url: str = "",
+    source: str = "url",
+    url_file: Path | None = None,
+    input_data: str | bytes | None = None,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(SCRIPT),
+        "--brand",
+        brand,
+        "--field",
+        field,
+    ]
+    if source == "url":
+        command.extend(("--url", url))
+    elif source == "stdin":
+        command.append("--stdin")
+    elif source == "file":
+        assert url_file is not None
+        command.extend(("--url-file", str(url_file)))
+    else:
+        raise AssertionError(f"unknown source: {source}")
+
     return subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--brand",
-            brand,
-            "--field",
-            field,
-            "--url",
-            url,
-        ],
-        text=True,
+        command,
+        text=not isinstance(input_data, (bytes, bytearray)),
         capture_output=True,
         check=False,
         timeout=10,
+        input=input_data,
+        cwd=cwd,
     )
 
 
@@ -228,6 +247,146 @@ class ValidateFeishuUrlTests(unittest.TestCase):
         self.assertIn("reason=", output)
         self.assertNotIn("argument-secret", output)
         self.assertNotIn("unexpected-sensitive-argument", output)
+
+    def test_help_marks_url_as_trusted_and_documents_safe_sources(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+
+        self.assertEqual(0, result.returncode, self.output(result))
+        self.assertIn("trusted", result.stdout.lower())
+        self.assertIn("--stdin", result.stdout)
+        self.assertIn("--url-file", result.stdout)
+
+    def test_stdin_accepts_shell_metacharacters_as_data_without_creating_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            marker = "stdin-marker"
+            url = (
+                "https://accounts.feishu.cn/path?code=$(touch${IFS}"
+                f"{marker})`touch${{IFS}}{marker}-backtick`;"
+            )
+            result = run_validator(
+                source="stdin", input_data=url, cwd=temporary_path
+            )
+
+            self.assertEqual(0, result.returncode, self.output(result))
+            self.assertFalse((temporary_path / marker).exists())
+            self.assertFalse((temporary_path / f"{marker}-backtick").exists())
+            self.assertNotIn("code=", self.output(result))
+
+    def test_url_file_accepts_shell_metacharacters_as_data_without_creating_marker(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            marker = "file-marker"
+            url = (
+                "https://accounts.feishu.cn/path?code=$(touch${IFS}"
+                f"{marker})`touch${{IFS}}{marker}-backtick`;"
+            )
+            url_file = temporary_path / "authorization-url.txt"
+            url_file.write_bytes(url.encode("utf-8"))
+            result = run_validator(
+                source="file", url_file=url_file, cwd=temporary_path
+            )
+
+            self.assertEqual(0, result.returncode, self.output(result))
+            self.assertFalse((temporary_path / marker).exists())
+            self.assertFalse((temporary_path / f"{marker}-backtick").exists())
+            self.assertNotIn("code=", self.output(result))
+
+    def test_stdin_and_file_reject_extra_newlines_without_echoing_input(self) -> None:
+        url = "https://accounts.feishu.cn/path?code=newline-secret"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            url_file = Path(temporary_directory) / "authorization-url.txt"
+            url_file.write_bytes((url + "\n").encode("utf-8"))
+            for source, input_data in (("stdin", url + "\n"), ("file", None)):
+                with self.subTest(source=source):
+                    result = run_validator(
+                        source=source,
+                        url_file=url_file,
+                        input_data=input_data,
+                    )
+                    output = self.output(result)
+                    self.assertEqual(1, result.returncode, output)
+                    self.assertNotIn("newline-secret", output)
+
+    def test_rejects_bad_utf8_from_stdin_and_file_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            url_file = Path(temporary_directory) / "bad-url.txt"
+            url_file.write_bytes(b"https://accounts.feishu.cn/path?code=\xff")
+            for source, input_data in (("stdin", b"\xff"), ("file", None)):
+                with self.subTest(source=source):
+                    result = run_validator(
+                        source=source,
+                        url_file=url_file,
+                        input_data=input_data,
+                    )
+                    output = self.output(result)
+                    self.assertEqual(1, result.returncode, output)
+                    self.assertNotIn("Traceback", output)
+                    self.assertNotIn("code=", output)
+
+    def test_rejects_missing_url_file_without_echoing_path(self) -> None:
+        missing_file = Path(tempfile.gettempdir()) / "missing-authorization-url.txt"
+        if missing_file.exists():
+            missing_file.unlink()
+        result = run_validator(source="file", url_file=missing_file)
+
+        output = self.output(result)
+        self.assertEqual(1, result.returncode, output)
+        self.assertNotIn(str(missing_file), output)
+        self.assertNotIn("Traceback", output)
+
+    def test_input_sources_are_mutually_exclusive_and_required(self) -> None:
+        common = [
+            sys.executable,
+            str(SCRIPT),
+            "--brand",
+            "feishu",
+            "--field",
+            "qr_url",
+        ]
+        cases = (
+            common + ["--stdin", "--url", "https://accounts.feishu.cn/path"],
+            common + ["--stdin", "--url-file", "url.txt"],
+            common,
+        )
+        for command in cases:
+            with self.subTest(command=command):
+                result = subprocess.run(
+                    command,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+                output = self.output(result)
+                self.assertEqual(2, result.returncode, output)
+                self.assertNotIn("accounts.feishu.cn", output)
+                self.assertNotIn("url.txt", output)
+
+    def test_rejects_input_larger_than_64_kib(self) -> None:
+        oversized_url = (
+            "https://accounts.feishu.cn/path?code=" + "a" * (64 * 1024)
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            url_file = Path(temporary_directory) / "oversized-url.txt"
+            url_file.write_bytes(oversized_url.encode("ascii"))
+            for source, input_data in (("stdin", oversized_url), ("file", None)):
+                with self.subTest(source=source):
+                    result = run_validator(
+                        source=source,
+                        url_file=url_file,
+                        input_data=input_data,
+                    )
+                    self.assertEqual(1, result.returncode, self.output(result))
+                    self.assertNotIn("a" * 100, self.output(result))
 
 
 if __name__ == "__main__":

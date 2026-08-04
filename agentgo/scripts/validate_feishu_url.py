@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from typing import Sequence
 from urllib.parse import urlsplit
@@ -25,6 +26,7 @@ HOSTS = {
         "console_url": "open.larksuite.com",
     },
 }
+MAX_INPUT_BYTES = 64 * 1024
 
 
 class SafeArgumentParser(argparse.ArgumentParser):
@@ -44,6 +46,36 @@ class ValidationResult:
     accepted: bool
     host: str
     reason: str
+
+
+def _read_input(arguments: argparse.Namespace) -> tuple[str | None, str | None]:
+    """Read exactly one URL source without exposing its contents."""
+    if arguments.stdin:
+        stream = getattr(sys.stdin, "buffer", sys.stdin)
+        try:
+            raw = stream.read(MAX_INPUT_BYTES + 1)
+        except OSError:
+            return None, "could not read standard input"
+    elif arguments.url_file is not None:
+        try:
+            with open(arguments.url_file, "rb") as stream:
+                raw = stream.read(MAX_INPUT_BYTES + 1)
+        except OSError:
+            return None, "could not read URL file"
+    else:
+        try:
+            raw = arguments.url.encode("utf-8")
+        except UnicodeEncodeError:
+            return None, "input must be valid UTF-8"
+
+    if isinstance(raw, str):
+        raw = raw.encode("utf-8")
+    if len(raw) > MAX_INPUT_BYTES:
+        return None, "input exceeds 64 KiB limit"
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return None, "input must be valid UTF-8"
 
 
 def validate_url(brand: str, field: str, url: str) -> ValidationResult:
@@ -106,14 +138,39 @@ def validate_url(brand: str, field: str, url: str) -> ValidationResult:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = SafeArgumentParser(
-        description="Validate a Feishu/Lark authorization URL offline"
+        description=(
+            "Validate a Feishu/Lark authorization URL offline. "
+            "Use --stdin or --url-file for untrusted input."
+        )
     )
     parser.add_argument("--brand", choices=tuple(HOSTS), required=True)
     parser.add_argument("--field", choices=FIELDS, required=True)
-    parser.add_argument("--url", required=True)
+    input_sources = parser.add_mutually_exclusive_group(required=True)
+    input_sources.add_argument(
+        "--url",
+        help="Trusted/test input only; do not pass untrusted URLs through a shell.",
+    )
+    input_sources.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read the exact URL from standard input.",
+    )
+    input_sources.add_argument(
+        "--url-file",
+        help="Read the exact UTF-8 URL from a file.",
+    )
     arguments = parser.parse_args(argv)
 
-    result = validate_url(arguments.brand, arguments.field, arguments.url)
+    url, input_error = _read_input(arguments)
+    if input_error is not None:
+        print(
+            f"[REJECT] field={arguments.field} brand={arguments.brand} "
+            f"host=<unparsed> reason={input_error}"
+        )
+        return 1
+
+    assert url is not None
+    result = validate_url(arguments.brand, arguments.field, url)
     status = "PASS" if result.accepted else "REJECT"
     print(
         f"[{status}] field={arguments.field} brand={arguments.brand} "
