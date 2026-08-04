@@ -45,7 +45,7 @@ _CREDENTIAL_KEY_PATTERN = (
     r"[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET))"
 )
 _CONTEXT_CREDENTIAL = re.compile(
-    rf'''(?im)(?<![A-Z0-9_])(?P<key>"?{_CREDENTIAL_KEY_PATTERN}"?)(?![A-Z0-9_])\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
+    rf'''(?m)(?<![A-Z0-9_])(?P<key>"?{_CREDENTIAL_KEY_PATTERN}"?)(?![A-Z0-9_])\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
 )
 _CONTEXT_CREDENTIAL_TABLE = re.compile(
     rf"(?im)\|\s*(?P<key>{_CREDENTIAL_KEY_PATTERN})\s*\|\s*(?P<value>[^|\r\n]+)\|"
@@ -606,11 +606,6 @@ def _sensitive_context_findings(path: Path) -> list[Finding]:
         key = match.group("key").strip('"').upper()
         value = match.group("value")
         if not _has_context_value(value):
-            continue
-        if key in {"TOKEN", "SECRET"} and re.search(
-            r"(?i)\b(?:access|api|authentication|bearer|client|refresh|security|the|your)\s+$",
-            content[max(0, match.start() - 32) : match.start()],
-        ):
             continue
         categories.add("CREDENTIAL")
     for match in _CONTEXT_CREDENTIAL_TABLE.finditer(content):
