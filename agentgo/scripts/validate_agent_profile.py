@@ -45,7 +45,7 @@ _CREDENTIAL_KEY_PATTERN = (
     r"[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET))"
 )
 _CONTEXT_CREDENTIAL = re.compile(
-    rf'''(?m)(?<![A-Z0-9_])(?P<key>"?{_CREDENTIAL_KEY_PATTERN}"?)(?![A-Z0-9_])\s*[:=]\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
+    rf'''(?im)(?<![A-Z0-9_])(?P<quote>["']?)(?P<key>{_CREDENTIAL_KEY_PATTERN})(?P=quote)(?![A-Z0-9_])\s*(?P<operator>[:=])\s*(?P<value>"[^"\r\n]*"|'[^'\r\n]*'|[^\s,#\r\n]+)'''
 )
 _CONTEXT_CREDENTIAL_TABLE = re.compile(
     rf"(?im)\|\s*(?P<key>{_CREDENTIAL_KEY_PATTERN})\s*\|\s*(?P<value>[^|\r\n]+)\|"
@@ -68,18 +68,32 @@ _CONTEXT_DOCUMENTATION_VALUES = frozenset(
         "access_token",
         "authorization",
         "authorization_code",
+        "authorization-code",
         "code",
         "device_code",
+        "device-code",
+        "environment variable",
         "example",
         "expires",
         "key",
+        "name",
+        "none",
         "optional",
+        "ordinary",
+        "placeholder",
         "refresh_token",
+        "redacted",
         "required",
         "sample",
         "secret",
+        "short",
         "token",
+        "this-is-a-code",
+        "待填",
+        "填写",
+        "unset",
         "user_code",
+        "user-code",
         "value",
     }
 )
@@ -542,21 +556,9 @@ def _has_context_value(value: str) -> bool:
     )
 
 
-def _looks_like_credential(value: str) -> bool:
-    candidate = value.strip().strip("'\"`<>[](){}.,;:")
-    if _is_documentation_placeholder(candidate) or _is_context_documentation_value(candidate):
-        return False
-    if not re.fullmatch(r"[A-Za-z0-9._+/=-]+", candidate):
-        return False
-    compact = re.sub(r"[._-]", "", candidate)
-    if re.match(r"(?i)^(?:sk|pk|rk|key|tok(?:en)?|secret)[._-]", candidate):
-        return len(compact) >= 10 and len(set(compact.lower())) >= 6
-    if len(compact) < 16 or len(set(compact.lower())) < 8 or len(candidate) < 20:
-        return False
-    return any(character.isdigit() for character in candidate) and (
-        any(character.isupper() for character in candidate)
-        or any(not character.isalnum() for character in candidate)
-    )
+def _has_context_table_value(value: str) -> bool:
+    candidate = value.strip().strip("'\"`").strip()
+    return _has_context_value(candidate)
 
 
 def _looks_like_bearer_token(value: str) -> bool:
@@ -583,16 +585,7 @@ def _looks_like_authorization_code(value: str) -> bool:
     if _is_documentation_placeholder(code) or _is_context_documentation_value(code):
         return False
     compact = re.sub(r"[-_.]", "", code)
-    if len(compact) < 8 or not compact.isalnum() or len(set(compact.lower())) < 6:
-        return False
-    if any(character.isdigit() for character in compact):
-        return True
-    parts = re.split(r"[-_.]", code)
-    return (
-        len(parts) >= 2
-        and all(part.isalpha() and part.isupper() for part in parts)
-        and len(compact) >= 10
-    )
+    return len(compact) >= 8 and compact.isalnum()
 
 
 def _sensitive_context_findings(path: Path) -> list[Finding]:
@@ -603,15 +596,15 @@ def _sensitive_context_findings(path: Path) -> list[Finding]:
 
     categories: set[str] = set()
     for match in _CONTEXT_CREDENTIAL.finditer(content):
-        key = match.group("key").strip('"').upper()
+        if match.group("operator") == ":" and not match.group("quote"):
+            continue
         value = match.group("value")
         if not _has_context_value(value):
             continue
         categories.add("CREDENTIAL")
     for match in _CONTEXT_CREDENTIAL_TABLE.finditer(content):
-        key = match.group("key").upper()
         value = match.group("value")
-        if (key == "PASSWORD" and _has_context_value(value)) or _looks_like_credential(value):
+        if _has_context_table_value(value):
             categories.add("CREDENTIAL")
     for match in _CONTEXT_BEARER.finditer(content):
         if _looks_like_bearer_token(match.group("value")):

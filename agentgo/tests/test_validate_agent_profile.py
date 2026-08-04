@@ -443,6 +443,36 @@ class ValidateAgentProfileTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, self._output(result))
 
+    def test_context_case_insensitive_assignments_and_json_keys_are_detected(self) -> None:
+        cases = (
+            ("access_token=live_secret_123\n", "live_secret_123"),
+            ('{"access_token":"live_secret_123"}\n', "live_secret_123"),
+            ('{"secret": "abc123"}\n', "abc123"),
+        )
+        path = self.profile / "SOUL.md"
+        for content, value in cases:
+            with self.subTest(content=content):
+                path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("CREDENTIAL", output)
+                self.assertNotIn(value, output)
+
+    def test_context_unquoted_colon_explanations_are_ignored(self) -> None:
+        content = (
+            "TOKEN: used for authentication.\n"
+            "access_token: a field name in documentation.\n"
+        )
+        for path in (self.profile / "SOUL.md",) + tuple(
+            self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
+        ):
+            path.write_text(content, encoding="utf-8")
+
+        result = run_validator(self.profile, stage="full")
+
+        self.assertEqual(0, result.returncode, self._output(result))
+
     def test_context_bearer_and_private_key_categories_are_rejected(self) -> None:
         path = self.profile / "SOUL.md"
         cases = (
@@ -548,6 +578,46 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertIn("CREDENTIAL", output)
         self.assertNotIn(value, output)
 
+    def test_context_credential_tables_flag_short_nonplaceholder_values(self) -> None:
+        value = "liveTokenABC123"
+        content = f"| ACCESS_TOKEN | {value} |\n"
+        path = self.profile / "SOUL.md"
+        path.write_text(content, encoding="utf-8")
+
+        result = run_validator(self.profile, stage="full")
+        output = self._output(result)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("CREDENTIAL", output)
+        self.assertNotIn(value, output)
+
+    def test_context_credential_tables_ignore_explicit_labels(self) -> None:
+        content = (
+            "| API_KEY | required |\n"
+            "| ACCESS_TOKEN | optional |\n"
+            "| APP_SECRET | example |\n"
+            "| TOKEN | placeholder |\n"
+            "| SECRET | redacted |\n"
+            "| PASSWORD | none |\n"
+            "| PASSWORD | unset |\n"
+            "| PASSWORD | name |\n"
+            "| PASSWORD | value |\n"
+            "| PASSWORD | environment variable |\n"
+            "| PASSWORD | 填写 |\n"
+            "| PASSWORD | 待填 |\n"
+            "| PASSWORD | <...> |\n"
+            "| PASSWORD | $VAR |\n"
+            "| PASSWORD | {{PASSWORD}} |\n"
+        )
+        for path in (self.profile / "SOUL.md",) + tuple(
+            self.workspace / filename for filename in WORKSPACE_CONTEXT_FILES
+        ):
+            path.write_text(content, encoding="utf-8")
+
+        result = run_validator(self.profile, stage="full")
+
+        self.assertEqual(0, result.returncode, self._output(result))
+
     def test_context_authorization_code_accepts_letter_only_device_codes(self) -> None:
         cases = (
             "https://example.invalid/device?code=ABCD-EFGH-IJKL\n",
@@ -627,6 +697,35 @@ class ValidateAgentProfileTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("CREDENTIAL", output)
         self.assertNotIn("abc123", output)
+
+    def test_context_sensitive_url_detects_lowercase_authorization_codes(self) -> None:
+        cases = (
+            ("https://example.invalid/callback?code=abcdefghi\n", "abcdefghi"),
+            ("https://example.invalid/callback#device_code=abcdefghi\n", "abcdefghi"),
+        )
+        path = self.workspace / "AGENTS.md"
+        for content, value in cases:
+            with self.subTest(content=content):
+                path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                output = self._output(result)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("AUTHORIZATION_CODE", output)
+                self.assertNotIn(value, output)
+
+    def test_context_sensitive_url_ignores_short_words_and_examples(self) -> None:
+        cases = (
+            "https://example.invalid/callback?code=short\n",
+            "https://example.invalid/callback?code=example-code\n",
+            "https://example.invalid/callback?code=authorization-code\n",
+            "https://example.invalid/callback?code=this-is-a-code\n",
+        )
+        path = self.workspace / "AGENTS.md"
+        for content in cases:
+            with self.subTest(content=content):
+                path.write_text(content, encoding="utf-8")
+                result = run_validator(self.profile, stage="full")
+                self.assertEqual(0, result.returncode, self._output(result))
 
     def test_context_id_and_url_placeholders_are_not_secrets(self) -> None:
         safe_values = (
