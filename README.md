@@ -1,6 +1,6 @@
 # 🧠 Claude Skills Collection
 
-18 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
+19 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
 
 ## 技能索引
 
@@ -24,6 +24,7 @@
 | **aisc** | 质量闸门知识沉淀 | 把文章、逐字稿、录音稿、网页和报告生成可验证学习卡片，按入库价值自动分层，并可上传飞书知识库更新索引 |
 | **sx** | 学习内容升级 | 把没讲透的学习文章升级成小白能看懂 + 专业可信 + 能落地的版本（5 段轻量版 / 7 段完整版），含反例库 + 自查清单 |
 | **AIfy** | AI 落地翻译 | 面向企业老板的 AI 落地引导工具：梳理业务路径→筛选 AI 场景→四层拆解→输出落地方案 |
+| **agentgo** | Hermes 智能体上线 | 创建、修复或交接独立 Hermes profile 和独立飞书机器人，处理用户授权，生成 SOUL.md、AGENTS.md、README.md、PROJECT.md 四类上下文文件，并做安全与分层验证 |
 
 ## 快速安装
 
@@ -36,6 +37,24 @@ cp -r claude-skills/pb ~/.claude/skills/
 
 # 安装单个技能到 Codex
 cp -r claude-skills/pb ~/.codex/skills/
+
+# 腾讯云 Linux：安装 AgentGo 到 Claude Code 或 Codex
+mkdir -p ~/.claude/skills ~/.codex/skills
+mkdir -p ~/.claude/skills/agentgo ~/.codex/skills/agentgo
+cp -r claude-skills/agentgo/. ~/.claude/skills/agentgo/
+cp -r claude-skills/agentgo/. ~/.codex/skills/agentgo/
+
+# 腾讯云 Linux：安装 AgentGo 到 Hermes 前先核实当前版本
+hermes skills --help
+
+# 默认 profile
+mkdir -p ~/.hermes/skills/agentgo
+cp -r claude-skills/agentgo/. ~/.hermes/skills/agentgo/
+
+# 命名 profile（把 your-profile 换成真实名称）
+AGENTGO_PROFILE="your-profile"
+mkdir -p ~/.hermes/profiles/"$AGENTGO_PROFILE"/skills/agentgo
+cp -r claude-skills/agentgo/. ~/.hermes/profiles/"$AGENTGO_PROFILE"/skills/agentgo/
 
 # 推荐：使用各技能自带的 install.sh（自动检测 4 平台）
 cd claude-skills/hyfy && bash install.sh
@@ -51,6 +70,28 @@ for skill in claude-skills/*/; do
   fi
 done
 ```
+
+整目录复制是为了同时带上参考资料、模板、验证器和测试；不要只下载 `SKILL.md`。Hermes 的 profile 选择方式会随版本变化，安装后先运行 `hermes skills --help`、`hermes profile --help`，再按本机帮助确认目标 profile，不能照抄旧版选择参数。
+
+## AgentGo 调用示例
+
+安装后，在 Claude Code、Codex 或已选中正确 profile 的 Hermes 会话中直接说：
+
+```text
+帮我新建一个独立的 Hermes 聊天机器人，只处理飞书私聊。请使用独立 profile 和独立飞书应用，先验证模型，再分层验收网关、主动发送和私聊；不要启用用户资源权限。
+```
+
+```text
+请为我的个人飞书知识库配置用户授权。先核对当前 Hermes profile、飞书应用和 lark-cli profile 是否一致，只申请读取目标知识库所需的最小权限；我确认前不要授权或写入。
+```
+
+```text
+请修复已有的 Hermes profile。先只读检查模型、飞书应用独占、网关、用户授权和四类上下文文件，只修失败或缺失的层；不要替换仍然健康的飞书应用，也不要显示任何凭据值。
+```
+
+## AgentGo 当前验证状态
+
+已通过技能静态检查、profile 验证器测试和安全行为评测，两轮受限评测均为 9/12，安全违规 0。真实飞书应用创建、用户授权、消息端到端测试，以及真实 Windows 到 Linux 中文文件传输仍需在目标租户和主机验收；当前不能据此宣称完整生产可用。
 
 ## 技能结构
 
@@ -79,7 +120,7 @@ skill-name/
 - `xx` 学习挖掘 · `xuexi` 学习卡片 · `zsk` 知识库导航 · `aisc` 质量闸门知识沉淀
 
 **技能工程：**
-- `sc` 技能上架 · `skillgo` 技能构建 · `skillgogo` 技能评审
+- `sc` 技能上架 · `skillgo` 技能构建 · `skillgogo` 技能评审 · `agentgo` Hermes 智能体上线与交接
 
 **职场工具：**
 - `rjgx` 人际关系 · `AIfy` AI 落地引导
