@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Agent Builder"
+  short_description: "Design, test, and ship Hermes agents"
+  default_prompt: "Use this skill to design, implement, test, and deliver a Hermes agent."

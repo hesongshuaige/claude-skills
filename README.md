@@ -1,6 +1,6 @@
 # 🧠 Claude Skills Collection
 
-22 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
+24 个生产级 AI Agent 技能，适用于 **Claude Code**、**Codex**、**OpenClaw**、**Hermes** 等 Agent 平台。
 
 ## 技能索引
 
@@ -14,6 +14,7 @@
 | **xuexi2** | 小白学习稿 | 把文章/课程/教程降噪后转成小白能看懂、能行动、能自查、能举一反三的学习稿 |
 | **pb** | 公文排版 | GB/T 9704-2012 国标公文排版，自动生成 Word 文档（方正公文小标宋/黑体/仿宋，28磅行距） |
 | **skillgo** | 技能工程 | 把需求、SOP、提示词转化为标准 Agent 技能，支持六层架构设计和质量评审 |
+| **hermes-agent-builder** | Hermes 智能体构建 | 把模糊需求转成可运行、可验收、可回滚的 Hermes 智能体，覆盖独立 Profile、飞书接入、权限、测试和长期运行 |
 | **gzh** | 公众号运营 | 一键生成/审核/发布公众号文章，含 AI 合规审查和三审流程 |
 | **skillgogo** | 技能评审 | 创建、审查、改进技能的质量评审工具，输出结构化评分和改进建议 |
 | **fyg** | 发言稿写作 | 政府/国企正式发言稿写作引擎：座谈会、招商会见、干部推荐、换届材料，六层质量管控 |
@@ -27,6 +28,7 @@
 | **sx** | 学习内容升级 | 把没讲透的学习文章升级成小白能看懂 + 专业可信 + 能落地的版本（5 段轻量版 / 7 段完整版），含反例库 + 自查清单 |
 | **AIfy** | AI 落地翻译 | 面向企业老板的 AI 落地引导工具：梳理业务路径→筛选 AI 场景→四层拆解→输出落地方案 |
 | **skillup** | 提示词入库 | 提示词入库流水线：身份节(6子能力)→提取原版→A/B判型→写优化版+设计要点→举一反三(4池选6条:新媒体/私募GP-LP/人事/财务)→MiniMax-M3/image-01实测(致命硬伤收敛)→lark-cli上传飞书+更新索引；零硬编码，不绑定特定飞书库 |
+| **skillyes** | 提示词查找 | 从飞书提示词库匹配可直接复用的提示词，并用样例和变式教会用户迁移使用 |
 | **cybgup** | 以投促招研判 | 国资以投促招项目初步研判报告：20维度研判+三层验证引擎(查证→推断→盲区)+浏览器优先搜索+可比公司估值+DCF情景分析+国标公文Word |
 
 ## 快速安装
@@ -47,6 +49,7 @@ cd claude-skills/ldyq && bash install.sh
 cd claude-skills/go && bash install.sh
 cd claude-skills/aisc && bash install.sh
 cd claude-skills/cybgup && bash install.sh
+cd claude-skills/hermes-agent-builder && bash install.sh
 
 # 批量安装全部技能
 for skill in claude-skills/*/; do
@@ -85,7 +88,7 @@ skill-name/
 - `xx` 学习挖掘 · `xuexi` 学习卡片 · `xuexi2` 小白学习稿 · `zsk` 知识库导航 · `aisc` 质量闸门知识沉淀
 
 **技能工程：**
-- `sc` 技能上架 · `skillgo` 技能构建 · `skillgogo` 技能评审
+- `sc` 技能上架 · `skillgo` 技能构建 · `skillgogo` 技能评审 · `hermes-agent-builder` Hermes 智能体构建
 
 **职场工具：**
 - `rjgx` 人际关系 · `AIfy` AI 落地引导
@@ -104,6 +107,14 @@ skill-name/
 - ✅ OpenClaw (`~/.openclaw/skills/`)
 - ✅ Hermes (`~/.hermes/skills/`)
 - ✅ Agents (`~/.agents/skills/`)
+
+`hermes-agent-builder` 的兼容约定：
+
+- `SKILL.md` 只使用标准 YAML frontmatter（元数据）和 Markdown（通用文档格式），Claude、Codex、Hermes 都可直接读取。
+- `references/`（参考资料）按需读取，不依赖特定平台的工具名称；没有对应工具时必须使用等价能力并说明替代方案。
+- `agents/openai.yaml` 只提供 Codex/OpenAI 展示信息，不影响 Claude、Hermes 读取主技能。
+- `install.sh` 支持 `--claude`、`--codex`、`--openclaw`、`--hermes`、`--agents` 和 `--all`；Hermes 使用独立 Profile 时可通过 `HERMES_SKILLS_DIR` 指定 Profile 的技能目录。
+- 技能本身不携带飞书密钥、服务器权限或系统级删除守卫；这些仍由各平台的运行时和操作系统配置负责。
 
 ## 许可
 
